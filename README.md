@@ -41,8 +41,20 @@ ea-project/
 2. 运行回测后，使用 `scripts/export_report.py` 生成报告
 3. 运行 `scripts/sanity_checks.py` 进行参数验证
 
+## 开发规范
+
+本项目配置了 Cursor AI 辅助开发规则（`.cursorrules`）和 Codex Cloud 代码审查提示（`.codex/review.md`），确保：
+- 模块职责单一（策略/风控/执行分层）
+- 无重绘指标，参数集中管理
+- 交易前风控验证（点差、止损、时段、步进）
+- 严格的订单处理和日志记录
+- 基于风险占比的仓位计算
+- 代码可测试性和可复现性
+
 ## 文档
 
 - [DESIGN.md](docs/DESIGN.md) - 策略与风控设计说明
 - [PR_REVIEW_CHECKLIST.md](docs/PR_REVIEW_CHECKLIST.md) - 代码审查清单
+- [.cursorrules](.cursorrules) - Cursor AI 开发规则
+- [.codex/review.md](.codex/review.md) - Codex 代码审查提示
 
