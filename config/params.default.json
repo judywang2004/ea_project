@@ -1,0 +1,45 @@
+{
+  "risk": {
+    "risk_per_trade_percent": 0.5,
+    "max_drawdown_percent": 10.0,
+    "max_spread_points": 30,
+    "min_stop_distance_points": 20
+  },
+  "position_sizing": {
+    "method": "ATR",
+    "atr_period": 14,
+    "atr_multiplier": 2.0,
+    "fixed_stop_points": 100,
+    "min_lot": 0.01,
+    "max_lot": 10.0
+  },
+  "trading_hours": {
+    "enabled": true,
+    "start_hour": 1,
+    "end_hour": 23,
+    "trade_monday": true,
+    "trade_tuesday": true,
+    "trade_wednesday": true,
+    "trade_thursday": true,
+    "trade_friday": true,
+    "avoid_news": true
+  },
+  "order_management": {
+    "max_retries": 3,
+    "retry_delay_ms": 1000,
+    "slippage_points": 5,
+    "magic_number": 12345,
+    "nfa_fifo_compatible": false
+  },
+  "strategy": {
+    "name": "example_strategy",
+    "enabled": true
+  },
+  "logging": {
+    "level": "INFO",
+    "log_orders": true,
+    "log_modifications": true,
+    "log_rejections": true
+  }
+}
+

@@ -1,0 +1,43 @@
+{
+  "EURUSD": {
+    "digits": 5,
+    "point": 0.00001,
+    "tick_value": 1.0,
+    "tick_size": 0.00001,
+    "contract_size": 100000,
+    "min_lot": 0.01,
+    "max_lot": 100.0,
+    "lot_step": 0.01
+  },
+  "GBPUSD": {
+    "digits": 5,
+    "point": 0.00001,
+    "tick_value": 1.0,
+    "tick_size": 0.00001,
+    "contract_size": 100000,
+    "min_lot": 0.01,
+    "max_lot": 100.0,
+    "lot_step": 0.01
+  },
+  "USDJPY": {
+    "digits": 3,
+    "point": 0.001,
+    "tick_value": 9.09,
+    "tick_size": 0.001,
+    "contract_size": 100000,
+    "min_lot": 0.01,
+    "max_lot": 100.0,
+    "lot_step": 0.01
+  },
+  "XAUUSD": {
+    "digits": 2,
+    "point": 0.01,
+    "tick_value": 1.0,
+    "tick_size": 0.01,
+    "contract_size": 100,
+    "min_lot": 0.01,
+    "max_lot": 100.0,
+    "lot_step": 0.01
+  }
+}
+

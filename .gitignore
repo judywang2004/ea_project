@@ -1,0 +1,49 @@
+# MQL compiled files
+*.ex4
+*.ex5
+
+# Logs
+*.log
+logs/
+
+# MT4/MT5 files
+*.ini
+tester/
+history/
+bases/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv
+
+# Reports (keep structure, ignore content)
+backtests/reports/*.html
+backtests/reports/*.csv
+backtests/reports/*.png
+backtests/reports/*.jpg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*.bak
+*.old
+
+# Keep empty directories
+!.gitkeep
+
