@@ -69,12 +69,12 @@ int      g_normalSpreadSamples = 0;
 //| 初始化过滤器                                                        |
 //+------------------------------------------------------------------+
 void InitTradeFilters() {
-   Print("[TradeFilters] 初始化过滤器模块");
-   Print("[TradeFilters] 周末过滤: ", WeekendFilterEnabled ? "启用" : "禁用");
-   Print("[TradeFilters] 假日过滤: ", HolidayFilterEnabled ? "启用" : "禁用");
-   Print("[TradeFilters] 新闻过滤: ", NewsFilterEnabled ? "启用" : "禁用");
-   Print("[TradeFilters] 点差过滤: ", SpreadFilterEnabled ? "启用" : "禁用");
-   Print("[TradeFilters] 波动过滤: ", VolatilityFilterEnabled ? "启用" : "禁用");
+   Print("[TradeFilters] Initializing filter module");  // 初始化过滤器模块
+   Print("[TradeFilters] Weekend Filter: ", WeekendFilterEnabled ? "ON" : "OFF");  // 周末过滤
+   Print("[TradeFilters] Holiday Filter: ", HolidayFilterEnabled ? "ON" : "OFF");  // 假日过滤
+   Print("[TradeFilters] News Filter: ", NewsFilterEnabled ? "ON" : "OFF");        // 新闻过滤
+   Print("[TradeFilters] Spread Filter: ", SpreadFilterEnabled ? "ON" : "OFF");    // 点差过滤
+   Print("[TradeFilters] Volatility Filter: ", VolatilityFilterEnabled ? "ON" : "OFF");  // 波动过滤
    
    // 初始化正常点差基准
    if(SpreadFilterEnabled) {
@@ -241,7 +241,7 @@ FilterResult CheckNewsFilter() {
       datetime newsTime = StringToTime(eventMT4);
       
       if(newsTime == 0) {
-         Print("[警告] 无法解析新闻时间: ", event, " (转换后: ", eventMT4, ")");
+         Print("[Warning] Failed to parse news time: ", event, " (converted: ", eventMT4, ")");  // 无法解析新闻时间
          continue;
       }
       
@@ -394,7 +394,7 @@ string GetFilterStatus(string symbol) {
 //| 记录过滤器拒绝日志                                                  |
 //+------------------------------------------------------------------+
 void LogFilterRejection(string filter_name, string reason) {
-   Print("[TradeFilters] ", filter_name, " 拒绝: ", reason);
+   Print("[TradeFilters] ", filter_name, " rejected: ", reason);  // 拒绝
 }
 
 //+------------------------------------------------------------------+
