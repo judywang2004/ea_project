@@ -41,6 +41,67 @@ ea-project/
 2. 运行回测后，使用 `scripts/export_report.py` 生成报告
 3. 运行 `scripts/sanity_checks.py` 进行参数验证
 
+## 交易过滤器
+
+项目包含完整的交易过滤模块 (`src/risk/trade_filters.mqh`)，用于交易前风控验证：
+
+### 五大过滤器
+1. **周末过滤** - 避免周末市场休市时段
+2. **假日过滤** - 避免重大节假日
+3. **新闻过滤** - 避免重大新闻发布前后
+4. **点差过滤** - 监控点差异常扩大
+5. **波动过滤** - 确保市场波动在合理范围（基于ATR）
+
+### 使用示例
+```mql4
+#include "risk/trade_filters.mqh"
+
+// 在下单前检查
+FilterResult result = CanTrade(Symbol());
+if(!result.passed) {
+   Print("交易被拒绝: ", result.reason);
+   return;
+}
+```
+
+### 配置验证
+```bash
+cd scripts
+python3 test_filters.py  # 验证过滤器配置
+```
+
+详细文档：[TRADE_FILTERS.md](docs/TRADE_FILTERS.md)
+
+## 交易策略
+
+### 🏆 趋势金字塔策略（机构级实现）
+
+专业的趋势跟随加仓策略，采用多重确认机制和严格风控。
+
+**核心特点**：
+- 📈 三均线系统 + ADX趋势强度过滤
+- 🔺 金字塔加仓（黄金分割比例0.618）
+- 🛡️ 动态ATR止损 + 追踪止损 + 盈亏平衡
+- 💰 分批止盈 + 趋势反转自动平仓
+- ⚖️ 严格风险管理（初始1%，总风险≤3%）
+
+**策略文件**：
+- EA主文件：`src/strategies/PyramidTrend_EA.mq4`
+- 策略模块：`src/strategies/pyramid_trend.mqh`
+- 详细文档：[PYRAMID_TREND_STRATEGY.md](docs/PYRAMID_TREND_STRATEGY.md)
+
+**快速开始**：
+```mql4
+// 1. 将EA拖到图表上
+// 2. 调整参数（或使用默认值）
+// 3. 启用自动交易
+// 4. 监控屏幕左上角状态显示
+```
+
+**适合品种**：EURUSD, GBPUSD, XAUUSD  
+**推荐周期**：H1, H4, D1  
+**风险等级**：中等（可调）
+
 ## 开发规范
 
 本项目配置了 Cursor AI 辅助开发规则（`.cursorrules`）和 Codex Cloud 代码审查提示（`.codex/review.md`），确保：
@@ -53,7 +114,15 @@ ea-project/
 
 ## 文档
 
+### 策略文档
+- [PYRAMID_TREND_STRATEGY.md](docs/PYRAMID_TREND_STRATEGY.md) - 趋势金字塔策略完整文档
+- [STRATEGY_COMPARISON.md](docs/STRATEGY_COMPARISON.md) - 与Turtle/Donchian系统详细对比
+
+### 模块文档
 - [DESIGN.md](docs/DESIGN.md) - 策略与风控设计说明
+- [TRADE_FILTERS.md](docs/TRADE_FILTERS.md) - 交易过滤器模块文档
+
+### 开发文档
 - [PR_REVIEW_CHECKLIST.md](docs/PR_REVIEW_CHECKLIST.md) - 代码审查清单
 - [.cursorrules](.cursorrules) - Cursor AI 开发规则
 - [.codex/review.md](.codex/review.md) - Codex 代码审查提示
