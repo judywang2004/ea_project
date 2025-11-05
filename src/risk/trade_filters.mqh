@@ -212,10 +212,22 @@ FilterResult CheckNewsFilter() {
       
       if(event == "") continue;
       
-      // 解析新闻时间（简化版本，实际应该用更健壮的解析）
-      datetime newsTime = StringToTime(event);
+      // 转换时间格式：YYYY-MM-DD HH:MM → YYYY.MM.DD HH:MM (MT4格式)
+      // 修复：StringToTime只能解析点分隔格式
+      string eventMT4 = "";
+      if(StringLen(event) >= 16) {  // 至少 "YYYY-MM-DD HH:MM"
+         eventMT4 = StringSubstr(event, 0, 4) + "." +    // YYYY
+                    StringSubstr(event, 5, 2) + "." +    // MM
+                    StringSubstr(event, 8, 2) + " " +    // DD
+                    StringSubstr(event, 11, 5);          // HH:MM
+      }
       
-      if(newsTime == 0) continue;
+      datetime newsTime = StringToTime(eventMT4);
+      
+      if(newsTime == 0) {
+         Print("[警告] 无法解析新闻时间: ", event, " (转换后: ", eventMT4, ")");
+         continue;
+      }
       
       int minutesDiff = (int)((currentTime - newsTime) / 60);
       

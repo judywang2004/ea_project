@@ -22,8 +22,8 @@ input double  MinProfitPointsToAdd = 50;     // Min Profit Points to Add
 input double  PriceDistanceMultiplier = 1.5; // Price Distance Multiplier (x ATR)
 
 // === Risk Management Parameters ===
-input double  InitialRiskPercent = 1.0;       // Initial Risk Percent
-input double  MaxTotalRiskPercent = 3.0;      // Max Total Risk Percent
+input double  InitialRiskPercent = 0.5;       // Initial Risk Percent (default 0.5% per .cursorrules)
+input double  MaxTotalRiskPercent = 2.0;      // Max Total Risk Percent (default <=2% per .cursorrules)
 input double  TrailStopATRMultiplier = 2.5;   // Trail Stop ATR Multiplier
 input bool    UseBreakEvenStop = true;        // Use Break Even Stop
 
@@ -405,8 +405,12 @@ void CheckPartialTakeProfit(string symbol) {
       if(!OrderSelect(g_positions[i].ticket, SELECT_BY_TICKET)) continue;
       if(OrderCloseTime() > 0) continue;
       
+      // 获取当前市场价格（修复：不使用OrderClosePrice，对未平仓订单为0）
+      double currentPrice = (OrderType() == OP_BUY) ? SymbolInfoDouble(symbol, SYMBOL_BID) : 
+                                                       SymbolInfoDouble(symbol, SYMBOL_ASK);
+      
       // 计算风险回报比
-      double profitPoints = MathAbs(OrderClosePrice() - OrderOpenPrice()) / SymbolInfoDouble(symbol, SYMBOL_POINT);
+      double profitPoints = MathAbs(currentPrice - OrderOpenPrice()) / SymbolInfoDouble(symbol, SYMBOL_POINT);
       double riskPoints = MathAbs(OrderOpenPrice() - g_positions[i].stopLoss) / SymbolInfoDouble(symbol, SYMBOL_POINT);
       
       if(riskPoints == 0) continue;
@@ -416,9 +420,11 @@ void CheckPartialTakeProfit(string symbol) {
       // 达到目标RR，部分平仓
       if(currentRR >= PartialTP_RR) {
          double closeLots = NormalizeDouble(OrderLots() * PartialTP_Percent, 2);
+         double closePrice = (OrderType() == OP_BUY) ? SymbolInfoDouble(symbol, SYMBOL_BID) : 
+                                                        SymbolInfoDouble(symbol, SYMBOL_ASK);
          
          if(closeLots >= SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN)) {
-            bool closed = OrderClose(OrderTicket(), closeLots, OrderClosePrice(), 3, clrOrange);
+            bool closed = OrderClose(OrderTicket(), closeLots, closePrice, 3, clrOrange);
             
             if(closed) {
                Print("[分批止盈] Ticket:", OrderTicket(), " | 平仓:", closeLots, "手 (", 
@@ -438,7 +444,11 @@ void CloseAllPyramidPositions(string symbol, string reason) {
       if(!OrderSelect(g_positions[i].ticket, SELECT_BY_TICKET)) continue;
       if(OrderCloseTime() > 0) continue; // 已平仓
       
-      bool closed = OrderClose(OrderTicket(), OrderLots(), OrderClosePrice(), 5, clrYellow);
+      // 获取正确的平仓价格（修复：不使用OrderClosePrice，对未平仓订单为0）
+      double closePrice = (OrderType() == OP_BUY) ? SymbolInfoDouble(symbol, SYMBOL_BID) : 
+                                                     SymbolInfoDouble(symbol, SYMBOL_ASK);
+      
+      bool closed = OrderClose(OrderTicket(), OrderLots(), closePrice, 5, clrYellow);
       
       if(closed) {
          Print("[平仓] Ticket:", OrderTicket(), " | Level:", g_positions[i].level, 
