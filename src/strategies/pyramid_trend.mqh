@@ -296,6 +296,9 @@ void ExecuteInitialEntry(string symbol, TrendSignal trend) {
       Print("[Entry Success] Level 0 - Ticket:", ticket, " | Lots:", lots,  // 开仓成功
             " | SL Distance:", stopLossDistance, " | Risk:", InitialRiskPercent, "%");
       
+      // 在图表上标记入场点
+      DrawOrderMarker(symbol, ticket, price, trend, 0);
+      
       // 添加到仓位数组
       AddPositionToArray(ticket, 0, price, lots, sl, tp);
       g_currentLevel = 1;
@@ -381,6 +384,9 @@ void ExecutePyramidAdd(string symbol, TrendSignal trend) {
       Print("[Add Success] Level ", g_currentLevel, " - Ticket:", ticket,  // 加仓成功
             " | Lots:", newLots, " (", PyramidRatio*100, "%)");
       
+      // 在图表上标记加仓点
+      DrawOrderMarker(symbol, ticket, price, g_currentTrend, g_currentLevel);
+      
       AddPositionToArray(ticket, g_currentLevel, price, newLots, sl, 0);
       g_currentLevel++;
       g_lastAddPrice = price;
@@ -423,8 +429,20 @@ void ManageExistingPositions(string symbol, TrendSignal trend) {
 //| 更新所有仓位的追踪止损                                             |
 //+------------------------------------------------------------------+
 void UpdateAllStopLosses(string symbol) {
+   // 使用静态变量控制更新频率（避免每个tick都修改）
+   static datetime lastUpdateTime = 0;
+   datetime currentBar = iTime(symbol, PERIOD_CURRENT, 0);
+   
+   // 只在新K线时更新止损（大幅减少修改次数）
+   if(currentBar == lastUpdateTime) {
+      return;
+   }
+   lastUpdateTime = currentBar;
+   
    double atr = iATR(symbol, PERIOD_CURRENT, 14, 0);
    double trailDistance = atr * TrailStopATRMultiplier;
+   double minStepPoints = 50; // 最小移动50点才修改（避免频繁小幅修改）
+   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
    
    for(int i = 0; i < ArraySize(g_positions); i++) {
       if(!OrderSelect(g_positions[i].ticket, SELECT_BY_TICKET)) continue;
@@ -441,14 +459,14 @@ void UpdateAllStopLosses(string symbol) {
          
          // 盈亏平衡止损
          if(UseBreakEvenStop && currentPrice > OrderOpenPrice() + trailDistance) {
-            double breakEvenSL = OrderOpenPrice() + 10 * SymbolInfoDouble(symbol, SYMBOL_POINT);
+            double breakEvenSL = OrderOpenPrice() + 10 * point;
             if(newSL < breakEvenSL) newSL = breakEvenSL;
          }
          
-         // 只向上移动
-         if(newSL > currentSL) {
+         // 只在移动距离足够大时才修改（减少不必要的修改）
+         if(newSL > currentSL && (newSL - currentSL) > minStepPoints * point) {
             if(OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrBlue)) {
-               Print("[SL Update] Ticket:", OrderTicket(), " | New SL:", newSL, " | Trail:", trailDistance);  // 止损更新
+               Print("[SL Update] Ticket:", OrderTicket(), " | New SL:", newSL, " | Trail:", trailDistance);
             }
          }
       } else {
@@ -456,14 +474,14 @@ void UpdateAllStopLosses(string symbol) {
          newSL = currentPrice + trailDistance;
          
          if(UseBreakEvenStop && currentPrice < OrderOpenPrice() - trailDistance) {
-            double breakEvenSL = OrderOpenPrice() - 10 * SymbolInfoDouble(symbol, SYMBOL_POINT);
+            double breakEvenSL = OrderOpenPrice() - 10 * point;
             if(newSL > breakEvenSL) newSL = breakEvenSL;
          }
          
-         // 只向下移动
-         if(newSL < currentSL || currentSL == 0) {
+         // 只在移动距离足够大时才修改
+         if((newSL < currentSL || currentSL == 0) && (currentSL == 0 || (currentSL - newSL) > minStepPoints * point)) {
             if(OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrRed)) {
-               Print("[SL Update] Ticket:", OrderTicket(), " | New SL:", newSL);  // 止损更新
+               Print("[SL Update] Ticket:", OrderTicket(), " | New SL:", newSL);
             }
          }
       }
@@ -783,6 +801,63 @@ void DrawTrendLabel(TrendSignal trend, double adx) {
 }
 
 //+------------------------------------------------------------------+
+//| 在图表上标记订单（入场/加仓）                                        |
+//+------------------------------------------------------------------+
+void DrawOrderMarker(string symbol, int ticket, double price, TrendSignal trend, int level) {
+   datetime orderTime = TimeCurrent();
+   if(OrderSelect(ticket, SELECT_BY_TICKET)) {
+      orderTime = OrderOpenTime();
+   }
+   
+   string objName = StringFormat("Order_%d", ticket);
+   
+   // 删除旧对象（如果存在）
+   if(ObjectFind(objName) >= 0) {
+      ObjectDelete(objName);
+   }
+   
+   // 根据方向和层级选择箭头和颜色
+   int arrowCode;
+   color arrowColor;
+   
+   if(trend == TREND_UP) {
+      arrowCode = (level == 0) ? 1 : 3;  // Level 0: 大圆点, Level 1+: 小圆点
+      arrowColor = clrLime;
+   } else {
+      arrowCode = (level == 0) ? 1 : 3;
+      arrowColor = clrRed;
+   }
+   
+   // 创建箭头标记
+   if(ObjectCreate(objName, OBJ_ARROW, 0, orderTime, price)) {
+      ObjectSet(objName, OBJPROP_ARROWCODE, arrowCode);
+      ObjectSet(objName, OBJPROP_COLOR, arrowColor);
+      ObjectSet(objName, OBJPROP_WIDTH, level == 0 ? 4 : 2);  // Level 0更大
+      ObjectSet(objName, OBJPROP_BACK, false);
+   }
+   
+   // 添加文本标签显示Level和手数
+   string textName = StringFormat("OrderText_%d", ticket);
+   if(ObjectFind(textName) >= 0) {
+      ObjectDelete(textName);
+   }
+   
+   double lots = 0;
+   if(OrderSelect(ticket, SELECT_BY_TICKET)) {
+      lots = OrderLots();
+   }
+   
+   string text = StringFormat("L%d: %.2f", level, lots);
+   double atr = iATR(symbol, PERIOD_CURRENT, 14, 0);
+   double textPrice = (trend == TREND_UP) ? price - atr * 0.3 : price + atr * 0.3;
+   
+   if(ObjectCreate(textName, OBJ_TEXT, 0, orderTime, textPrice)) {
+      ObjectSetText(textName, text, 8, "Arial", arrowColor);
+      ObjectSet(textName, OBJPROP_BACK, false);
+   }
+}
+
+//+------------------------------------------------------------------+
 //| 清理图表对象                                                       |
 //+------------------------------------------------------------------+
 void CleanupChartObjects() {
@@ -796,7 +871,9 @@ void CleanupChartObjects() {
       
       // 删除所有PyramidTrend相关对象
       if(StringFind(objName, "PyramidTrend_") >= 0 || 
-         StringFind(objName, "DemoSignal_") >= 0) {
+         StringFind(objName, "DemoSignal_") >= 0 ||
+         StringFind(objName, "Order_") >= 0 ||
+         StringFind(objName, "OrderText_") >= 0) {
          ObjectDelete(objName);
       }
    }
