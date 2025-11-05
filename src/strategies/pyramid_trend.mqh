@@ -121,6 +121,77 @@ void PyramidStrategyOnTick(string symbol) {
 }
 
 //+------------------------------------------------------------------+
+//| Demo模式 - 只显示信号，不真实下单                                  |
+//+------------------------------------------------------------------+
+void PyramidStrategyOnTick_DemoMode(string symbol) {
+   // 1. 检查趋势
+   TrendSignal trend = AnalyzeTrend(symbol);
+   
+   // 2. 可视化趋势（在图表上显示）
+   DrawTrendIndicator(symbol, trend);
+   
+   // 3. 检查并显示入场信号（但不下单）
+   CheckEntrySignal_DemoMode(symbol, trend);
+}
+
+//+------------------------------------------------------------------+
+//| Demo模式 - 检查入场信号（只显示，不下单）                          |
+//+------------------------------------------------------------------+
+void CheckEntrySignal_DemoMode(string symbol, TrendSignal trend) {
+   // 如果没有明确趋势，不触发
+   if(trend != TREND_UP && trend != TREND_DOWN) {
+      return;
+   }
+   
+   // 防止同一根K线重复信号
+   datetime currentBar = iTime(symbol, PERIOD_CURRENT, 0);
+   if(currentBar == g_lastSignalTime) {
+      return;
+   }
+   
+   // 趋势刚刚形成或延续
+   if(trend == g_currentTrend) {
+      return; // 趋势未变，不重复提示
+   }
+   
+   // 如果有反向趋势，先不入场（等待确认）
+   if(trend != g_currentTrend && g_currentTrend != TREND_NONE) {
+      return;
+   }
+   
+   // 触发信号提示
+   double price = (trend == TREND_UP) ? SymbolInfoDouble(symbol, SYMBOL_ASK) : 
+                                         SymbolInfoDouble(symbol, SYMBOL_BID);
+   double atr = iATR(symbol, PERIOD_CURRENT, 14, 0);
+   double stopLossDistance = atr * TrailStopATRMultiplier;
+   double lots = CalculateLotSize(symbol, stopLossDistance, InitialRiskPercent);
+   
+   // 在图表上画信号箭头
+   string signalName = StringFormat("DemoSignal_%d", currentBar);
+   if(ObjectFind(signalName) >= 0) {
+      ObjectDelete(signalName);
+   }
+   
+   int arrowCode = (trend == TREND_UP) ? 241 : 242;  // 买入/卖出箭头
+   color arrowColor = (trend == TREND_UP) ? clrLime : clrRed;
+   
+   if(ObjectCreate(signalName, OBJ_ARROW, 0, currentBar, price)) {
+      ObjectSet(signalName, OBJPROP_ARROWCODE, arrowCode);
+      ObjectSet(signalName, OBJPROP_COLOR, arrowColor);
+      ObjectSet(signalName, OBJPROP_WIDTH, 3);
+      ObjectSet(signalName, OBJPROP_BACK, false);
+   }
+   
+   // 打印信号
+   Print("[DEMO Signal] ", trend == TREND_UP ? "LONG" : "SHORT",
+         " | Price:", price, " | Lots:", lots, " | SL Distance:", stopLossDistance,
+         " | Risk:", InitialRiskPercent, "%");
+   
+   g_lastSignalTime = currentBar;
+   g_currentTrend = trend;
+}
+
+//+------------------------------------------------------------------+
 //| 趋势分析 - 多重确认                                                |
 //+------------------------------------------------------------------+
 TrendSignal AnalyzeTrend(string symbol) {
@@ -583,18 +654,30 @@ string GetPyramidStatus() {
 //| 可视化趋势指示器（在图表上显示）                                    |
 //+------------------------------------------------------------------+
 void DrawTrendIndicator(string symbol, TrendSignal trend) {
-   string objName = "PyramidTrend_Indicator";
+   // 获取ADX值
+   double adx = iADX(symbol, PERIOD_CURRENT, ADX_Period, PRICE_CLOSE, MODE_MAIN, 0);
    
-   // 删除旧的标记
-   ObjectDelete(objName);
+   // 总是显示右上角状态标签
+   DrawTrendLabel(trend, adx);
    
+   // 如果无明确趋势，只显示标签，不显示箭头
    if(trend == TREND_NONE) {
-      // 无趋势，不显示
       return;
    }
    
+   // 使用静态变量记录上次趋势，只在趋势变化时画新箭头
+   static TrendSignal lastDrawnTrend = TREND_NONE;
+   static datetime lastDrawnTime = 0;
+   datetime currentBar = iTime(symbol, PERIOD_CURRENT, 0);
+   
+   // 检查是否是新K线或趋势变化
+   bool shouldDraw = (currentBar != lastDrawnTime) || (trend != lastDrawnTrend);
+   
+   if(!shouldDraw) {
+      return; // 同一根K线，趋势未变，不重复画
+   }
+   
    // 获取当前K线时间和价格
-   datetime barTime = iTime(symbol, PERIOD_CURRENT, 0);
    double price = iClose(symbol, PERIOD_CURRENT, 0);
    
    // 根据趋势方向选择箭头和颜色
@@ -605,44 +688,58 @@ void DrawTrendIndicator(string symbol, TrendSignal trend) {
    if(trend == TREND_UP) {
       arrowCode = 233;  // 上箭头
       arrowColor = clrLime;
-      text = "UPTREND";
+      text = "UP";
    } else if(trend == TREND_DOWN) {
       arrowCode = 234;  // 下箭头
       arrowColor = clrRed;
-      text = "DOWNTREND";
+      text = "DOWN";
    } else if(trend == TREND_WEAK) {
       arrowCode = 108;  // 圆点
       arrowColor = clrOrange;
       text = "WEAK";
    }
    
+   // 创建唯一的对象名（带时间戳）
+   string objName = StringFormat("PyramidTrend_Arrow_%d", currentBar);
+   
+   // 删除旧对象（如果存在）
+   if(ObjectFind(objName) >= 0) {
+      ObjectDelete(objName);
+   }
+   
    // 创建箭头标记
-   ObjectCreate(objName, OBJ_ARROW, 0, barTime, price);
-   ObjectSet(objName, OBJPROP_ARROWCODE, arrowCode);
-   ObjectSet(objName, OBJPROP_COLOR, arrowColor);
-   ObjectSet(objName, OBJPROP_WIDTH, 3);
+   if(ObjectCreate(objName, OBJ_ARROW, 0, currentBar, price)) {
+      ObjectSet(objName, OBJPROP_ARROWCODE, arrowCode);
+      ObjectSet(objName, OBJPROP_COLOR, arrowColor);
+      ObjectSet(objName, OBJPROP_WIDTH, 2);
+      ObjectSet(objName, OBJPROP_BACK, false);  // 前景显示
+   }
    
    // 创建文本标签
-   string textName = "PyramidTrend_Text";
-   ObjectDelete(textName);
+   string textName = StringFormat("PyramidTrend_Text_%d", currentBar);
+   if(ObjectFind(textName) >= 0) {
+      ObjectDelete(textName);
+   }
    
-   // 获取ADX值
-   double adx = iADX(symbol, PERIOD_CURRENT, ADX_Period, PRICE_CLOSE, MODE_MAIN, 0);
-   string fullText = StringFormat("%s (ADX:%.1f)", text, adx);
+   string fullText = StringFormat("%s(%.0f)", text, adx);
    
    // 调整文本位置（在箭头旁边）
    double textPrice = price;
+   double atr = iATR(symbol, PERIOD_CURRENT, 14, 0);
    if(trend == TREND_UP) {
-      textPrice = price - 50 * SymbolInfoDouble(symbol, SYMBOL_POINT);
+      textPrice = price - atr * 0.5;
    } else {
-      textPrice = price + 50 * SymbolInfoDouble(symbol, SYMBOL_POINT);
+      textPrice = price + atr * 0.5;
    }
    
-   ObjectCreate(textName, OBJ_TEXT, 0, barTime, textPrice);
-   ObjectSetText(textName, fullText, 10, "Arial Bold", arrowColor);
+   if(ObjectCreate(textName, OBJ_TEXT, 0, currentBar, textPrice)) {
+      ObjectSetText(textName, fullText, 9, "Arial", arrowColor);
+      ObjectSet(textName, OBJPROP_BACK, false);
+   }
    
-   // 设置图表右上角的趋势状态标签
-   DrawTrendLabel(trend, adx);
+   // 记录本次绘制
+   lastDrawnTrend = trend;
+   lastDrawnTime = currentBar;
 }
 
 //+------------------------------------------------------------------+
@@ -684,9 +781,20 @@ void DrawTrendLabel(TrendSignal trend, double adx) {
 //| 清理图表对象                                                       |
 //+------------------------------------------------------------------+
 void CleanupChartObjects() {
-   ObjectDelete("PyramidTrend_Indicator");
-   ObjectDelete("PyramidTrend_Text");
+   // 清理趋势状态标签
    ObjectDelete("PyramidTrend_Status");
+   
+   // 清理所有趋势箭头和文本（按时间命名的对象）
+   int totalObjects = ObjectsTotal();
+   for(int i = totalObjects - 1; i >= 0; i--) {
+      string objName = ObjectName(i);
+      
+      // 删除所有PyramidTrend相关对象
+      if(StringFind(objName, "PyramidTrend_") >= 0 || 
+         StringFind(objName, "DemoSignal_") >= 0) {
+         ObjectDelete(objName);
+      }
+   }
 }
 //+------------------------------------------------------------------+
 

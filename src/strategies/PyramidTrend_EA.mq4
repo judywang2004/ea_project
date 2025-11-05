@@ -20,6 +20,8 @@ input string  Section1 = "=== Basic Settings ===";    // Section divider
 input int     MagicNumber = 88888;                    // Magic Number
 // 订单备注
 input string  TradeComment = "Pyramid";               // Trade Comment
+// Demo测试模式(只显示信号,不真实下单)
+input bool    EnableDemoMode = false;                 // Demo Mode (Signal Only, No Real Orders)
 
 input string  Section2 = "=== Filter Switches ===";   // Section divider
 // 启用过滤器
@@ -41,6 +43,15 @@ int OnInit() {
    Print("Symbol: ", Symbol());         // 交易品种
    Print("Timeframe: ", Period());      // 时间周期
    Print("Balance: $", AccountBalance());  // 账户余额
+   
+   // Demo模式提示
+   if(EnableDemoMode) {
+      Print("================================================");
+      Print("*** DEMO MODE ENABLED ***");  // Demo模式已启用
+      Print("*** Signals only, no real orders will be placed ***");  // 仅显示信号，不会真实下单
+      Print("================================================");
+   }
+   
    Print("================================================");
    
    // 1. 初始化过滤器
@@ -94,34 +105,40 @@ void OnTick() {
    // =====================================
    // 1. 过滤器检查（如果启用）
    // =====================================
-   if(EnableFilters) {
+   if(EnableFilters && !EnableDemoMode) {  // Demo模式下也检查过滤器
       FilterResult filter = CanTrade(Symbol());
       
       if(!filter.passed) {
          // 静默处理（不频繁打印），只在状态变化时提示
          static bool lastFilterPassed = true;
          if(lastFilterPassed) {
-            Comment("⏸ 交易暂停: ", filter.reason);
-            Print("[过滤器] ", filter.reason);
+            Comment("⏸ Trade paused: ", filter.reason);  // 交易暂停
+            Print("[Filter] ", filter.reason);
          }
          lastFilterPassed = false;
          
-         // 过滤器未通过，不执行策略
-         return;
+         // 过滤器未通过，不执行策略（但Demo模式下继续显示信号）
+         if(!EnableDemoMode) {
+            return;
+         }
       }
       
       static bool lastFilterPassedOK = false;
       if(!lastFilterPassedOK) {
-         Comment("▶ 交易窗口开放");
-         Print("[过滤器] ✓ 所有过滤器通过");
+         Comment("▶ Trading window open");  // 交易窗口开放
+         Print("[Filter] ✓ All filters passed");
       }
       lastFilterPassedOK = true;
    }
    
    // =====================================
-   // 2. 执行金字塔策略
+   // 2. 执行金字塔策略（Demo模式下只显示信号）
    // =====================================
-   PyramidStrategyOnTick(Symbol());
+   if(EnableDemoMode) {
+      PyramidStrategyOnTick_DemoMode(Symbol());
+   } else {
+      PyramidStrategyOnTick(Symbol());
+   }
    
    // =====================================
    // 3. 更新屏幕显示
