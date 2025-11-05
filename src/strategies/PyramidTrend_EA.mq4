@@ -13,17 +13,23 @@
 #include <strategies/pyramid_trend.mqh>
 
 //+------------------------------------------------------------------+
-//| 全局参数                                                           |
+//| Global Parameters
 //+------------------------------------------------------------------+
 input string  Section1 = "====== 基本设置 ======";  // ------
-input int     MagicNumber = 88888;                    // EA魔术号
-input string  TradeComment = "金字塔趋势";             // 订单备注
+// EA魔术号
+input int     MagicNumber = 88888;                    // Magic Number
+// 订单备注
+input string  TradeComment = "金字塔趋势";             // Trade Comment
 
 input string  Section2 = "====== 过滤器开关 ======"; // ------
-input bool    EnableFilters = true;                   // 启用过滤器
-input bool    EnableWeekendFilter = true;             // 启用周末过滤
-input bool    EnableSpreadFilter = true;              // 启用点差过滤
-input bool    EnableVolatilityFilter = true;          // 启用波动过滤
+// 启用过滤器
+input bool    EnableFilters = true;                   // Enable Filters
+// 启用周末过滤
+input bool    EnableWeekendFilter = true;             // Enable Weekend Filter
+// 启用点差过滤
+input bool    EnableSpreadFilter = true;              // Enable Spread Filter
+// 启用波动过滤
+input bool    EnableVolatilityFilter = true;          // Enable Volatility Filter
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
