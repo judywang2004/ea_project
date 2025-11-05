@@ -114,6 +114,10 @@ python3 test_filters.py  # 验证过滤器配置
 
 ## 文档
 
+### 快速开始 🚀
+- **[PYRAMID_QUICK_START.md](docs/PYRAMID_QUICK_START.md)** - 安装和使用教程
+- **[DEMO_MODE_GUIDE.md](docs/DEMO_MODE_GUIDE.md)** - Demo模式实时测试指南 🆕
+
 ### 策略文档
 - [PYRAMID_TREND_STRATEGY.md](docs/PYRAMID_TREND_STRATEGY.md) - 趋势金字塔策略完整文档
 - [STRATEGY_COMPARISON.md](docs/STRATEGY_COMPARISON.md) - 与Turtle/Donchian系统详细对比
