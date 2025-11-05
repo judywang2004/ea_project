@@ -36,18 +36,18 @@ input bool    EnableVolatilityFilter = true;          // Enable Volatility Filte
 //+------------------------------------------------------------------+
 int OnInit() {
    Print("================================================");
-   Print("    趋势金字塔EA启动 - Institutional Grade");
+   Print("    Pyramid Trend EA Started - Institutional Grade");  // 趋势金字塔EA启动
    Print("================================================");
-   Print("交易品种: ", Symbol());
-   Print("时间周期: ", Period());
-   Print("账户余额: $", AccountBalance());
+   Print("Symbol: ", Symbol());         // 交易品种
+   Print("Timeframe: ", Period());      // 时间周期
+   Print("Balance: $", AccountBalance());  // 账户余额
    Print("================================================");
    
    // 1. 初始化过滤器
    if(EnableFilters) {
       InitTradeFilters();
    } else {
-      Print("[警告] 过滤器已禁用！");
+      Print("[Warning] Filters disabled!");  // 警告：过滤器已禁用
    }
    
    // 2. 初始化金字塔策略
@@ -66,21 +66,24 @@ void OnDeinit(const int reason) {
    string reason_text = "";
    
    switch(reason) {
-      case REASON_PROGRAM:     reason_text = "EA被终止"; break;
-      case REASON_REMOVE:      reason_text = "EA从图表移除"; break;
-      case REASON_RECOMPILE:   reason_text = "EA重新编译"; break;
-      case REASON_CHARTCHANGE: reason_text = "图表品种或周期改变"; break;
-      case REASON_CHARTCLOSE:  reason_text = "图表关闭"; break;
-      case REASON_PARAMETERS:  reason_text = "参数修改"; break;
-      case REASON_ACCOUNT:     reason_text = "账户切换"; break;
-      default:                 reason_text = "未知原因"; break;
+      case REASON_PROGRAM:     reason_text = "EA terminated"; break;          // EA被终止
+      case REASON_REMOVE:      reason_text = "EA removed from chart"; break;  // EA从图表移除
+      case REASON_RECOMPILE:   reason_text = "EA recompiled"; break;          // EA重新编译
+      case REASON_CHARTCHANGE: reason_text = "Chart symbol/period changed"; break; // 图表品种或周期改变
+      case REASON_CHARTCLOSE:  reason_text = "Chart closed"; break;           // 图表关闭
+      case REASON_PARAMETERS:  reason_text = "Parameters modified"; break;    // 参数修改
+      case REASON_ACCOUNT:     reason_text = "Account switched"; break;       // 账户切换
+      default:                 reason_text = "Unknown reason"; break;         // 未知原因
    }
    
+   // 清理图表对象
+   CleanupChartObjects();
+   
    Print("================================================");
-   Print("趋势金字塔EA停止运行");
-   Print("停止原因: ", reason_text);
-   Print("最终余额: $", AccountBalance());
-   Print("总盈利: $", AccountProfit());
+   Print("Pyramid Trend EA stopped");  // 趋势金字塔EA停止运行
+   Print("Reason: ", reason_text);     // 停止原因
+   Print("Final Balance: $", AccountBalance());  // 最终余额
+   Print("Total Profit: $", AccountProfit());    // 总盈利
    Print("================================================");
 }
 
@@ -130,29 +133,29 @@ void OnTick() {
 //| 显示EA参数                                                         |
 //+------------------------------------------------------------------+
 void DisplayParameters() {
-   Print("--- 趋势识别参数 ---");
-   Print("  快速均线: EMA(", TrendMA_Fast, ")");
-   Print("  慢速均线: EMA(", TrendMA_Slow, ")");
-   Print("  过滤均线: EMA(", TrendMA_Filter, ")");
-   Print("  ADX周期: ", ADX_Period, " | 阈值: ", ADX_Threshold);
+   Print("--- Trend Parameters ---");  // 趋势识别参数
+   Print("  Fast EMA: ", TrendMA_Fast);
+   Print("  Slow EMA: ", TrendMA_Slow);
+   Print("  Filter EMA: ", TrendMA_Filter);
+   Print("  ADX Period: ", ADX_Period, " | Threshold: ", ADX_Threshold);
    
-   Print("--- 金字塔参数 ---");
-   Print("  最大层数: ", MaxPyramidLevels);
-   Print("  加仓比例: ", PyramidRatio);
-   Print("  最小盈利点数: ", MinProfitPointsToAdd);
-   Print("  加仓距离: ", PriceDistanceMultiplier, " x ATR");
+   Print("--- Pyramid Parameters ---");  // 金字塔参数
+   Print("  Max Levels: ", MaxPyramidLevels);
+   Print("  Pyramid Ratio: ", PyramidRatio);
+   Print("  Min Profit Points: ", MinProfitPointsToAdd);
+   Print("  Price Distance: ", PriceDistanceMultiplier, " x ATR");
    
-   Print("--- 风险管理 ---");
-   Print("  初始风险: ", InitialRiskPercent, "%");
-   Print("  最大总风险: ", MaxTotalRiskPercent, "%");
-   Print("  追踪止损: ", TrailStopATRMultiplier, " x ATR");
-   Print("  盈亏平衡: ", UseBreakEvenStop ? "启用" : "禁用");
+   Print("--- Risk Management ---");  // 风险管理
+   Print("  Initial Risk: ", InitialRiskPercent, "%");
+   Print("  Max Total Risk: ", MaxTotalRiskPercent, "%");
+   Print("  Trail Stop: ", TrailStopATRMultiplier, " x ATR");
+   Print("  Break-Even: ", UseBreakEvenStop ? "ON" : "OFF");
    
-   Print("--- 退出规则 ---");
-   Print("  趋势反转退出: ", ExitOnTrendReverse ? "启用" : "禁用");
-   Print("  分批止盈: ", UsePartialTakeProfit ? "启用" : "禁用");
+   Print("--- Exit Rules ---");  // 退出规则
+   Print("  Exit on Reversal: ", ExitOnTrendReverse ? "ON" : "OFF");
+   Print("  Partial TP: ", UsePartialTakeProfit ? "ON" : "OFF");
    if(UsePartialTakeProfit) {
-      Print("    比例: ", PartialTP_Percent*100, "% | R:R: ", PartialTP_RR);
+      Print("    Ratio: ", PartialTP_Percent*100, "% | R:R: ", PartialTP_RR);
    }
 }
 
@@ -199,12 +202,12 @@ void UpdateDisplay() {
 void OnTimer() {
    // 定期检查系统状态
    if(!IsConnected()) {
-      Print("[警告] 与服务器断开连接！");
+      Print("[Warning] Disconnected from server!");  // 与服务器断开连接
       return;
    }
    
    if(!IsTradeAllowed()) {
-      Print("[警告] EA交易未启用！请检查设置。");
+      Print("[Warning] EA trading not enabled! Check settings.");  // EA交易未启用
       return;
    }
 }
