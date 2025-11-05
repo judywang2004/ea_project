@@ -181,34 +181,34 @@ void DisplayParameters() {
 //+------------------------------------------------------------------+
 void UpdateDisplay() {
    string display = "\n";
-   display += "╔═══════════════════════════════════════╗\n";
-   display += "║   趋势金字塔EA - Institutional Grade  ║\n";
-   display += "╠═══════════════════════════════════════╣\n";
+   display += "====================================\n";
+   display += " Pyramid Trend EA - Institutional  \n";  // 趋势金字塔EA
+   display += "====================================\n";
    
-   // 账户信息
-   display += StringFormat("║ 账户余额: $%.2f\n", AccountBalance());
-   display += StringFormat("║ 浮动盈亏: $%.2f\n", AccountProfit());
-   display += StringFormat("║ 净值: $%.2f\n", AccountEquity());
-   display += "╠═══════════════════════════════════════╣\n";
+   // Account info
+   display += StringFormat("Balance: $%.2f\n", AccountBalance());
+   display += StringFormat("Floating: $%.2f\n", AccountProfit());
+   display += StringFormat("Equity: $%.2f\n", AccountEquity());
+   display += "------------------------------------\n";
    
-   // 策略状态
-   display += "║ " + GetPyramidStatus() + "\n";
-   display += "╠═══════════════════════════════════════╣\n";
+   // Strategy status
+   display += GetPyramidStatus() + "\n";
+   display += "------------------------------------\n";
    
-   // 市场信息
+   // Market info
    double spread = (SymbolInfoDouble(Symbol(), SYMBOL_ASK) - 
                     SymbolInfoDouble(Symbol(), SYMBOL_BID)) / 
                     SymbolInfoDouble(Symbol(), SYMBOL_POINT);
    double atr = iATR(Symbol(), PERIOD_CURRENT, 14, 0);
    
-   display += StringFormat("║ 点差: %.1f | ATR: %.5f\n", spread, atr);
+   display += StringFormat("Spread: %.1f | ATR: %.5f\n", spread, atr);
    
-   // 过滤器状态
+   // Filter status
    if(EnableFilters) {
-      display += "║ 过滤器: " + GetFilterStatus(Symbol()) + "\n";
+      display += "Filters: " + GetFilterStatus(Symbol()) + "\n";
    }
    
-   display += "╚═══════════════════════════════════════╝\n";
+   display += "====================================\n";
    
    Comment(display);
 }
