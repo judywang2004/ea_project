@@ -8,8 +8,9 @@
 #property strict
 
 // 包含过滤器和策略模块
-#include "../risk/trade_filters.mqh"
-#include "pyramid_trend.mqh"
+// Use < > for files in Include folder, relative to MQL4/Include/
+#include <risk/trade_filters.mqh>
+#include <strategies/pyramid_trend.mqh>
 
 //+------------------------------------------------------------------+
 //| 全局参数                                                           |
