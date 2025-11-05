@@ -15,13 +15,13 @@
 //+------------------------------------------------------------------+
 //| Global Parameters
 //+------------------------------------------------------------------+
-input string  Section1 = "====== 基本设置 ======";  // ------
+input string  Section1 = "=== Basic Settings ===";    // Section divider
 // EA魔术号
 input int     MagicNumber = 88888;                    // Magic Number
 // 订单备注
-input string  TradeComment = "金字塔趋势";             // Trade Comment
+input string  TradeComment = "Pyramid";               // Trade Comment
 
-input string  Section2 = "====== 过滤器开关 ======"; // ------
+input string  Section2 = "=== Filter Switches ===";   // Section divider
 // 启用过滤器
 input bool    EnableFilters = true;                   // Enable Filters
 // 启用周末过滤
