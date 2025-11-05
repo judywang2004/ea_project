@@ -657,18 +657,23 @@ void DrawTrendIndicator(string symbol, TrendSignal trend) {
    // 获取ADX值
    double adx = iADX(symbol, PERIOD_CURRENT, ADX_Period, PRICE_CLOSE, MODE_MAIN, 0);
    
-   // 总是显示右上角状态标签
-   DrawTrendLabel(trend, adx);
+   // 使用静态变量减少更新频率
+   static TrendSignal lastDrawnTrend = TREND_NONE;
+   static datetime lastDrawnTime = 0;
+   static int updateCounter = 0;
+   datetime currentBar = iTime(symbol, PERIOD_CURRENT, 0);
+   
+   // 每10个tick更新一次标签（减少刷新频率）
+   updateCounter++;
+   if(updateCounter >= 10 || currentBar != lastDrawnTime) {
+      DrawTrendLabel(trend, adx);
+      updateCounter = 0;
+   }
    
    // 如果无明确趋势，只显示标签，不显示箭头
    if(trend == TREND_NONE) {
       return;
    }
-   
-   // 使用静态变量记录上次趋势，只在趋势变化时画新箭头
-   static TrendSignal lastDrawnTrend = TREND_NONE;
-   static datetime lastDrawnTime = 0;
-   datetime currentBar = iTime(symbol, PERIOD_CURRENT, 0);
    
    // 检查是否是新K线或趋势变化
    bool shouldDraw = (currentBar != lastDrawnTime) || (trend != lastDrawnTrend);
