@@ -60,16 +60,16 @@ enum TrendSignal {
 //+------------------------------------------------------------------+
 //| Global Variables
 //+------------------------------------------------------------------+
-// Current pyramid positions array
-PyramidPosition g_positions[];
-// Current pyramid level count
-int             g_currentLevel = 0;
-// Current identified trend
-TrendSignal     g_currentTrend = TREND_NONE;
-// Last add position price
-double          g_lastAddPrice = 0;
-// Last signal time (prevent duplicates)
-datetime        g_lastSignalTime = 0;
+// 当前金字塔仓位数组
+PyramidPosition g_positions[];              // Current pyramid positions array
+// 当前金字塔层数
+int             g_currentLevel = 0;         // Current pyramid level count
+// 当前识别的趋势
+TrendSignal     g_currentTrend = TREND_NONE; // Current identified trend
+// 上次加仓价格
+double          g_lastAddPrice = 0;         // Last add position price
+// 上次信号时间(防止重复)
+datetime        g_lastSignalTime = 0;       // Last signal time (prevent duplicates)
 
 //+------------------------------------------------------------------+
 //| 初始化策略                                                         |
