@@ -22,7 +22,27 @@
     "trade_wednesday": true,
     "trade_thursday": true,
     "trade_friday": true,
-    "avoid_news": true
+    "friday_close_hour": 21,
+    "monday_open_hour": 3,
+    "avoid_news": true,
+    "news_avoid_minutes_before": 30,
+    "news_avoid_minutes_after": 30
+  },
+  "filters": {
+    "weekend_filter_enabled": true,
+    "holiday_filter_enabled": true,
+    "news_filter_enabled": true,
+    "spread_filter_enabled": true,
+    "volatility_filter_enabled": true,
+    "max_spread_points": 30,
+    "normal_spread_multiplier": 2.5,
+    "atr_period": 14,
+    "min_atr_value": 0.0010,
+    "max_atr_value": 0.0200,
+    "holidays": [
+      "2025-01-01",
+      "2025-12-25"
+    ]
   },
   "order_management": {
     "max_retries": 3,
@@ -32,8 +52,27 @@
     "nfa_fifo_compatible": false
   },
   "strategy": {
-    "name": "example_strategy",
+    "name": "pyramid_trend",
     "enabled": true
+  },
+  "pyramid_strategy": {
+    "trend_ma_fast": 20,
+    "trend_ma_slow": 50,
+    "trend_ma_filter": 200,
+    "adx_period": 14,
+    "adx_threshold": 25.0,
+    "max_pyramid_levels": 4,
+    "pyramid_ratio": 0.618,
+    "min_profit_points_to_add": 50,
+    "price_distance_multiplier": 1.5,
+    "initial_risk_percent": 1.0,
+    "max_total_risk_percent": 3.0,
+    "trail_stop_atr_multiplier": 2.5,
+    "use_break_even_stop": true,
+    "exit_on_trend_reverse": true,
+    "use_partial_take_profit": true,
+    "partial_tp_percent": 0.3,
+    "partial_tp_rr": 2.0
   },
   "logging": {
     "level": "INFO",
