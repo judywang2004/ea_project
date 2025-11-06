@@ -14,6 +14,9 @@ input int     TrendMA_Slow = 50;              // Slow EMA Period
 input int     TrendMA_Filter = 200;           // Long-term Filter EMA
 input int     ADX_Period = 14;                // ADX Period
 input double  ADX_Threshold = 25.0;           // ADX Threshold
+// 多时间框架过滤
+input bool    UseHigherTimeframe = true;      // Use Daily Trend Filter
+input int     HigherTimeframe = PERIOD_D1;    // Higher Timeframe (D1/W1/MN1)
 
 // === Pyramid Addition Parameters ===
 input int     MaxPyramidLevels = 4;           // Max Pyramid Levels
@@ -211,20 +214,38 @@ TrendSignal AnalyzeTrend(string symbol) {
    // 判断逻辑：多重确认
    bool strongTrend = adx > ADX_Threshold;
    
+   // 4. 多时间框架过滤：检查日线趋势
+   TrendSignal htfTrend = TREND_NONE;
+   if(UseHigherTimeframe) {
+      htfTrend = AnalyzeHigherTimeframeTrend(symbol);
+   }
+   
    // 上升趋势：快线>慢线 + 价格>长期均线 + ADX强 + +DI>-DI
    if(ema_fast > ema_slow && price > ema_filter && strongTrend && plus_di > minus_di) {
+      // 如果启用了高周期过滤，必须日线也是上升趋势
+      if(UseHigherTimeframe && htfTrend != TREND_UP) {
+         return TREND_NONE; // 日线不是上升趋势，拒绝
+      }
+      
       if(g_currentTrend != TREND_UP) {
          Print("[Strategy] Uptrend detected - EMA(", TrendMA_Fast, "):", ema_fast,  // 识别到上升趋势
-               " > EMA(", TrendMA_Slow, "):", ema_slow, " | ADX:", adx);
+               " > EMA(", TrendMA_Slow, "):", ema_slow, " | ADX:", adx,
+               UseHigherTimeframe ? " | Daily: UP" : "");
       }
       return TREND_UP;
    }
    
    // 下降趋势：快线<慢线 + 价格<长期均线 + ADX强 + -DI>+DI
    if(ema_fast < ema_slow && price < ema_filter && strongTrend && minus_di > plus_di) {
+      // 如果启用了高周期过滤，必须日线也是下降趋势
+      if(UseHigherTimeframe && htfTrend != TREND_DOWN) {
+         return TREND_NONE; // 日线不是下降趋势，拒绝
+      }
+      
       if(g_currentTrend != TREND_DOWN) {
          Print("[Strategy] Downtrend detected - EMA(", TrendMA_Fast, "):", ema_fast,  // 识别到下降趋势
-               " < EMA(", TrendMA_Slow, "):", ema_slow, " | ADX:", adx);
+               " < EMA(", TrendMA_Slow, "):", ema_slow, " | ADX:", adx,
+               UseHigherTimeframe ? " | Daily: DOWN" : "");
       }
       return TREND_DOWN;
    }
@@ -232,6 +253,28 @@ TrendSignal AnalyzeTrend(string symbol) {
    // 趋势减弱：ADX下降
    if(adx < ADX_Threshold && g_currentLevel > 0) {
       return TREND_WEAK;
+   }
+   
+   return TREND_NONE;
+}
+
+//+------------------------------------------------------------------+
+//| 分析高周期趋势（日线/周线）                                         |
+//+------------------------------------------------------------------+
+TrendSignal AnalyzeHigherTimeframeTrend(string symbol) {
+   // 使用简化的趋势判断（只用均线）
+   double htf_ema_fast = iMA(symbol, HigherTimeframe, 21, 0, MODE_EMA, PRICE_CLOSE, 0);
+   double htf_ema_slow = iMA(symbol, HigherTimeframe, 50, 0, MODE_EMA, PRICE_CLOSE, 0);
+   double htf_price = iClose(symbol, HigherTimeframe, 0);
+   
+   // 上升趋势：快线>慢线 且 价格>快线
+   if(htf_ema_fast > htf_ema_slow && htf_price > htf_ema_fast) {
+      return TREND_UP;
+   }
+   
+   // 下降趋势：快线<慢线 且 价格<快线
+   if(htf_ema_fast < htf_ema_slow && htf_price < htf_ema_fast) {
+      return TREND_DOWN;
    }
    
    return TREND_NONE;
