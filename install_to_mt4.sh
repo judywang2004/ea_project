@@ -36,6 +36,7 @@ echo ""
 # 创建必要的目录
 echo "正在创建目录结构..."
 mkdir -p "$MT4_DATA_DIR/MQL4/Experts"
+mkdir -p "$MT4_DATA_DIR/MQL4/Scripts"
 mkdir -p "$MT4_DATA_DIR/MQL4/Include/strategies"
 mkdir -p "$MT4_DATA_DIR/MQL4/Include/risk"
 
@@ -72,18 +73,52 @@ if [ -f "src/risk/trade_filters_example.mq4" ]; then
     echo "${GREEN}✓ 复制 trade_filters_example.mq4 (示例)${NC}"
 fi
 
+# 复制工具脚本
+echo ""
+echo "正在复制工具脚本..."
+if [ -f "scripts/check_mt4_timezone.mq4" ]; then
+    cp "scripts/check_mt4_timezone.mq4" "$MT4_DATA_DIR/MQL4/Scripts/"
+    echo "${GREEN}✓ 复制 check_mt4_timezone.mq4 (时区检查工具)${NC}"
+else
+    echo "${RED}✗ 找不到 check_mt4_timezone.mq4${NC}"
+fi
+
+if [ -f "scripts/mark_nfp_times.mq4" ]; then
+    cp "scripts/mark_nfp_times.mq4" "$MT4_DATA_DIR/MQL4/Scripts/"
+    echo "${GREEN}✓ 复制 mark_nfp_times.mq4 (NFP标记工具)${NC}"
+else
+    echo "${RED}✗ 找不到 mark_nfp_times.mq4${NC}"
+fi
+
 echo ""
 echo "${GREEN}=========================================${NC}"
 echo "${GREEN}✓ 安装完成！${NC}"
 echo "${GREEN}=========================================${NC}"
 echo ""
 echo "下一步："
-echo "1. 重启MT4（或点击导航器的刷新按钮）"
-echo "2. 在导航器 → EA交易 中找到 PyramidTrend_EA"
-echo "3. 拖动到图表上开始使用"
+echo "1. 打开MT4的MetaEditor (按F4)"
+echo "2. 编译以下文件 (按F7):"
+echo "   - Experts/PyramidTrend_EA.mq4"
+echo "   - Scripts/check_mt4_timezone.mq4"
+echo "   - Scripts/mark_nfp_times.mq4"
+echo ""
+echo "3. 使用方法："
+echo "   【EA使用】"
+echo "   - 在导航器 → EA交易 → PyramidTrend_EA"
+echo "   - 拖到图表上开始交易"
+echo ""
+echo "   【时区检查】"
+echo "   - 在导航器 → Scripts → check_mt4_timezone"
+echo "   - 拖到任意图表上，查看Journal输出"
+echo ""
+echo "   【NFP标记】"
+echo "   - 在导航器 → Scripts → mark_nfp_times"
+echo "   - 拖到EURUSD H1图表上，选择时区"
+echo "   - 会在图表上绘制黄色NFP时间线"
 echo ""
 echo "安装位置："
 echo "  - EA文件: $MT4_DATA_DIR/MQL4/Experts/"
+echo "  - 脚本文件: $MT4_DATA_DIR/MQL4/Scripts/"
 echo "  - 策略模块: $MT4_DATA_DIR/MQL4/Include/strategies/"
 echo "  - 过滤器模块: $MT4_DATA_DIR/MQL4/Include/risk/"
 echo ""
