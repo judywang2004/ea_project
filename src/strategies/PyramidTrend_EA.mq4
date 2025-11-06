@@ -19,7 +19,7 @@ input string  Section1 = "=== Basic Settings ===";    // Section divider
 // EA魔术号
 input int     MagicNumber = 88888;                    // Magic Number
 // 订单备注
-input string  TradeComment = "Pyramid";               // Trade Comment
+input string  TradeComment = "Pyr";                   // Trade Comment (Keep short for display)
 // Demo测试模式(只显示信号,不真实下单)
 input bool    EnableDemoMode = false;                 // Demo Mode (Signal Only, No Real Orders)
 
