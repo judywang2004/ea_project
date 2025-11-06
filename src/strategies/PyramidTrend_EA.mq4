@@ -8,39 +8,57 @@
 #property strict
 
 // 包含过滤器和策略模块
-#include "../risk/trade_filters.mqh"
-#include "pyramid_trend.mqh"
+// Use < > for files in Include folder, relative to MQL4/Include/
+#include <risk/trade_filters.mqh>
+#include <strategies/pyramid_trend.mqh>
 
 //+------------------------------------------------------------------+
-//| 全局参数                                                           |
+//| Global Parameters
 //+------------------------------------------------------------------+
-input string  Section1 = "====== 基本设置 ======";  // ------
-input int     MagicNumber = 88888;                    // EA魔术号
-input string  TradeComment = "金字塔趋势";             // 订单备注
+input string  Section1 = "=== Basic Settings ===";    // Section divider
+// EA魔术号
+input int     MagicNumber = 88888;                    // Magic Number
+// 订单备注
+input string  TradeComment = "Pyr";                   // Trade Comment (Keep short for display)
+// Demo测试模式(只显示信号,不真实下单)
+input bool    EnableDemoMode = false;                 // Demo Mode (Signal Only, No Real Orders)
 
-input string  Section2 = "====== 过滤器开关 ======"; // ------
-input bool    EnableFilters = true;                   // 启用过滤器
-input bool    EnableWeekendFilter = true;             // 启用周末过滤
-input bool    EnableSpreadFilter = true;              // 启用点差过滤
-input bool    EnableVolatilityFilter = true;          // 启用波动过滤
+input string  Section2 = "=== Filter Switches ===";   // Section divider
+// 启用过滤器
+input bool    EnableFilters = true;                   // Enable Filters
+// 启用周末过滤
+input bool    EnableWeekendFilter = true;             // Enable Weekend Filter
+// 启用点差过滤
+input bool    EnableSpreadFilter = true;              // Enable Spread Filter
+// 启用波动过滤
+input bool    EnableVolatilityFilter = true;          // Enable Volatility Filter
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
 int OnInit() {
    Print("================================================");
-   Print("    趋势金字塔EA启动 - Institutional Grade");
+   Print("    Pyramid Trend EA Started - Institutional Grade");  // 趋势金字塔EA启动
    Print("================================================");
-   Print("交易品种: ", Symbol());
-   Print("时间周期: ", Period());
-   Print("账户余额: $", AccountBalance());
+   Print("Symbol: ", Symbol());         // 交易品种
+   Print("Timeframe: ", Period());      // 时间周期
+   Print("Balance: $", AccountBalance());  // 账户余额
+   
+   // Demo模式提示
+   if(EnableDemoMode) {
+      Print("================================================");
+      Print("*** DEMO MODE ENABLED ***");  // Demo模式已启用
+      Print("*** Signals only, no real orders will be placed ***");  // 仅显示信号，不会真实下单
+      Print("================================================");
+   }
+   
    Print("================================================");
    
    // 1. 初始化过滤器
    if(EnableFilters) {
       InitTradeFilters();
    } else {
-      Print("[警告] 过滤器已禁用！");
+      Print("[Warning] Filters disabled!");  // 警告：过滤器已禁用
    }
    
    // 2. 初始化金字塔策略
@@ -59,21 +77,24 @@ void OnDeinit(const int reason) {
    string reason_text = "";
    
    switch(reason) {
-      case REASON_PROGRAM:     reason_text = "EA被终止"; break;
-      case REASON_REMOVE:      reason_text = "EA从图表移除"; break;
-      case REASON_RECOMPILE:   reason_text = "EA重新编译"; break;
-      case REASON_CHARTCHANGE: reason_text = "图表品种或周期改变"; break;
-      case REASON_CHARTCLOSE:  reason_text = "图表关闭"; break;
-      case REASON_PARAMETERS:  reason_text = "参数修改"; break;
-      case REASON_ACCOUNT:     reason_text = "账户切换"; break;
-      default:                 reason_text = "未知原因"; break;
+      case REASON_PROGRAM:     reason_text = "EA terminated"; break;          // EA被终止
+      case REASON_REMOVE:      reason_text = "EA removed from chart"; break;  // EA从图表移除
+      case REASON_RECOMPILE:   reason_text = "EA recompiled"; break;          // EA重新编译
+      case REASON_CHARTCHANGE: reason_text = "Chart symbol/period changed"; break; // 图表品种或周期改变
+      case REASON_CHARTCLOSE:  reason_text = "Chart closed"; break;           // 图表关闭
+      case REASON_PARAMETERS:  reason_text = "Parameters modified"; break;    // 参数修改
+      case REASON_ACCOUNT:     reason_text = "Account switched"; break;       // 账户切换
+      default:                 reason_text = "Unknown reason"; break;         // 未知原因
    }
    
+   // 清理图表对象
+   CleanupChartObjects();
+   
    Print("================================================");
-   Print("趋势金字塔EA停止运行");
-   Print("停止原因: ", reason_text);
-   Print("最终余额: $", AccountBalance());
-   Print("总盈利: $", AccountProfit());
+   Print("Pyramid Trend EA stopped");  // 趋势金字塔EA停止运行
+   Print("Reason: ", reason_text);     // 停止原因
+   Print("Final Balance: $", AccountBalance());  // 最终余额
+   Print("Total Profit: $", AccountProfit());    // 总盈利
    Print("================================================");
 }
 
@@ -84,34 +105,40 @@ void OnTick() {
    // =====================================
    // 1. 过滤器检查（如果启用）
    // =====================================
-   if(EnableFilters) {
+   if(EnableFilters && !EnableDemoMode) {  // Demo模式下也检查过滤器
       FilterResult filter = CanTrade(Symbol());
       
       if(!filter.passed) {
          // 静默处理（不频繁打印），只在状态变化时提示
          static bool lastFilterPassed = true;
          if(lastFilterPassed) {
-            Comment("⏸ 交易暂停: ", filter.reason);
-            Print("[过滤器] ", filter.reason);
+            Comment("⏸ Trade paused: ", filter.reason);  // 交易暂停
+            Print("[Filter] ", filter.reason);
          }
          lastFilterPassed = false;
          
-         // 过滤器未通过，不执行策略
-         return;
+         // 过滤器未通过，不执行策略（但Demo模式下继续显示信号）
+         if(!EnableDemoMode) {
+            return;
+         }
       }
       
       static bool lastFilterPassedOK = false;
       if(!lastFilterPassedOK) {
-         Comment("▶ 交易窗口开放");
-         Print("[过滤器] ✓ 所有过滤器通过");
+         Comment("▶ Trading window open");  // 交易窗口开放
+         Print("[Filter] ✓ All filters passed");
       }
       lastFilterPassedOK = true;
    }
    
    // =====================================
-   // 2. 执行金字塔策略
+   // 2. 执行金字塔策略（Demo模式下只显示信号）
    // =====================================
-   PyramidStrategyOnTick(Symbol());
+   if(EnableDemoMode) {
+      PyramidStrategyOnTick_DemoMode(Symbol());
+   } else {
+      PyramidStrategyOnTick(Symbol());
+   }
    
    // =====================================
    // 3. 更新屏幕显示
@@ -123,29 +150,29 @@ void OnTick() {
 //| 显示EA参数                                                         |
 //+------------------------------------------------------------------+
 void DisplayParameters() {
-   Print("--- 趋势识别参数 ---");
-   Print("  快速均线: EMA(", TrendMA_Fast, ")");
-   Print("  慢速均线: EMA(", TrendMA_Slow, ")");
-   Print("  过滤均线: EMA(", TrendMA_Filter, ")");
-   Print("  ADX周期: ", ADX_Period, " | 阈值: ", ADX_Threshold);
+   Print("--- Trend Parameters ---");  // 趋势识别参数
+   Print("  Fast EMA: ", TrendMA_Fast);
+   Print("  Slow EMA: ", TrendMA_Slow);
+   Print("  Filter EMA: ", TrendMA_Filter);
+   Print("  ADX Period: ", ADX_Period, " | Threshold: ", ADX_Threshold);
    
-   Print("--- 金字塔参数 ---");
-   Print("  最大层数: ", MaxPyramidLevels);
-   Print("  加仓比例: ", PyramidRatio);
-   Print("  最小盈利点数: ", MinProfitPointsToAdd);
-   Print("  加仓距离: ", PriceDistanceMultiplier, " x ATR");
+   Print("--- Pyramid Parameters ---");  // 金字塔参数
+   Print("  Max Levels: ", MaxPyramidLevels);
+   Print("  Pyramid Ratio: ", PyramidRatio);
+   Print("  Min Profit Points: ", MinProfitPointsToAdd);
+   Print("  Price Distance: ", PriceDistanceMultiplier, " x ATR");
    
-   Print("--- 风险管理 ---");
-   Print("  初始风险: ", InitialRiskPercent, "%");
-   Print("  最大总风险: ", MaxTotalRiskPercent, "%");
-   Print("  追踪止损: ", TrailStopATRMultiplier, " x ATR");
-   Print("  盈亏平衡: ", UseBreakEvenStop ? "启用" : "禁用");
+   Print("--- Risk Management ---");  // 风险管理
+   Print("  Initial Risk: ", InitialRiskPercent, "%");
+   Print("  Max Total Risk: ", MaxTotalRiskPercent, "%");
+   Print("  Trail Stop: ", TrailStopATRMultiplier, " x ATR");
+   Print("  Break-Even: ", UseBreakEvenStop ? "ON" : "OFF");
    
-   Print("--- 退出规则 ---");
-   Print("  趋势反转退出: ", ExitOnTrendReverse ? "启用" : "禁用");
-   Print("  分批止盈: ", UsePartialTakeProfit ? "启用" : "禁用");
+   Print("--- Exit Rules ---");  // 退出规则
+   Print("  Exit on Reversal: ", ExitOnTrendReverse ? "ON" : "OFF");
+   Print("  Partial TP: ", UsePartialTakeProfit ? "ON" : "OFF");
    if(UsePartialTakeProfit) {
-      Print("    比例: ", PartialTP_Percent*100, "% | R:R: ", PartialTP_RR);
+      Print("    Ratio: ", PartialTP_Percent*100, "% | R:R: ", PartialTP_RR);
    }
 }
 
@@ -154,34 +181,34 @@ void DisplayParameters() {
 //+------------------------------------------------------------------+
 void UpdateDisplay() {
    string display = "\n";
-   display += "╔═══════════════════════════════════════╗\n";
-   display += "║   趋势金字塔EA - Institutional Grade  ║\n";
-   display += "╠═══════════════════════════════════════╣\n";
+   display += "====================================\n";
+   display += " Pyramid Trend EA - Institutional  \n";  // 趋势金字塔EA
+   display += "====================================\n";
    
-   // 账户信息
-   display += StringFormat("║ 账户余额: $%.2f\n", AccountBalance());
-   display += StringFormat("║ 浮动盈亏: $%.2f\n", AccountProfit());
-   display += StringFormat("║ 净值: $%.2f\n", AccountEquity());
-   display += "╠═══════════════════════════════════════╣\n";
+   // Account info
+   display += StringFormat("Balance: $%.2f\n", AccountBalance());
+   display += StringFormat("Floating: $%.2f\n", AccountProfit());
+   display += StringFormat("Equity: $%.2f\n", AccountEquity());
+   display += "------------------------------------\n";
    
-   // 策略状态
-   display += "║ " + GetPyramidStatus() + "\n";
-   display += "╠═══════════════════════════════════════╣\n";
+   // Strategy status
+   display += GetPyramidStatus() + "\n";
+   display += "------------------------------------\n";
    
-   // 市场信息
+   // Market info
    double spread = (SymbolInfoDouble(Symbol(), SYMBOL_ASK) - 
                     SymbolInfoDouble(Symbol(), SYMBOL_BID)) / 
                     SymbolInfoDouble(Symbol(), SYMBOL_POINT);
    double atr = iATR(Symbol(), PERIOD_CURRENT, 14, 0);
    
-   display += StringFormat("║ 点差: %.1f | ATR: %.5f\n", spread, atr);
+   display += StringFormat("Spread: %.1f | ATR: %.5f\n", spread, atr);
    
-   // 过滤器状态
+   // Filter status
    if(EnableFilters) {
-      display += "║ 过滤器: " + GetFilterStatus(Symbol()) + "\n";
+      display += "Filters: " + GetFilterStatus(Symbol()) + "\n";
    }
    
-   display += "╚═══════════════════════════════════════╝\n";
+   display += "====================================\n";
    
    Comment(display);
 }
@@ -192,12 +219,12 @@ void UpdateDisplay() {
 void OnTimer() {
    // 定期检查系统状态
    if(!IsConnected()) {
-      Print("[警告] 与服务器断开连接！");
+      Print("[Warning] Disconnected from server!");  // 与服务器断开连接
       return;
    }
    
    if(!IsTradeAllowed()) {
-      Print("[警告] EA交易未启用！请检查设置。");
+      Print("[Warning] EA trading not enabled! Check settings.");  // EA交易未启用
       return;
    }
 }

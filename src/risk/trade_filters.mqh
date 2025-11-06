@@ -6,33 +6,49 @@
 #property strict
 
 //+------------------------------------------------------------------+
-//| 外部参数（从配置文件加载）                                          |
+//| External Parameters (loaded from config)
 //+------------------------------------------------------------------+
-// 周末过滤
-input bool    WeekendFilterEnabled = true;        // 启用周末过滤
-input int     FridayCloseHour = 21;               // 周五停止交易时刻（服务器时间）
-input int     MondayOpenHour = 3;                 // 周一开始交易时刻（服务器时间）
+// === Weekend Filter ===
+// 启用周末过滤
+input bool    WeekendFilterEnabled = true;        // Enable Weekend Filter
+// 周五停止交易时刻
+input int     FridayCloseHour = 21;               // Friday Close Hour
+// 周一开始交易时刻
+input int     MondayOpenHour = 3;                 // Monday Open Hour
 
-// 假日过滤
-input bool    HolidayFilterEnabled = true;        // 启用假日过滤
-input string  HolidayList = "2025-01-01,2025-12-25"; // 假日列表（YYYY-MM-DD格式，逗号分隔）
+// === Holiday Filter ===
+// 启用假日过滤
+input bool    HolidayFilterEnabled = true;        // Enable Holiday Filter
+// 假日列表(YYYY-MM-DD,逗号分隔)
+input string  HolidayList = "2025-01-01,2025-12-25"; // Holiday List (YYYY-MM-DD,comma separated)
 
-// 新闻过滤
-input bool    NewsFilterEnabled = true;           // 启用新闻过滤
-input int     NewsAvoidMinutesBefore = 30;        // 新闻前避开分钟数
-input int     NewsAvoidMinutesAfter = 30;         // 新闻后避开分钟数
-input string  NewsEvents = "";                     // 重大新闻时间列表（YYYY-MM-DD HH:MM格式，分号分隔）
+// === News Filter ===
+// 启用新闻过滤
+input bool    NewsFilterEnabled = true;           // Enable News Filter
+// 新闻前避开分钟数
+input int     NewsAvoidMinutesBefore = 30;        // Minutes Before News
+// 新闻后避开分钟数
+input int     NewsAvoidMinutesAfter = 30;         // Minutes After News
+// 新闻时间列表(YYYY-MM-DD HH:MM;分号分隔)
+input string  NewsEvents = "";                    // News Events (YYYY-MM-DD HH:MM;semicolon separated)
 
-// 点差过滤
-input bool    SpreadFilterEnabled = true;         // 启用点差过滤
-input int     MaxSpreadPoints = 30;               // 最大允许点差（点数）
-input double  NormalSpreadMultiplier = 2.5;       // 正常点差倍数（超过则拒绝）
+// === Spread Filter ===
+// 启用点差过滤
+input bool    SpreadFilterEnabled = true;         // Enable Spread Filter
+// 最大允许点差(点数)
+input int     MaxSpreadPoints = 30;               // Max Spread Points
+// 正常点差倍数
+input double  NormalSpreadMultiplier = 2.5;       // Normal Spread Multiplier
 
-// 波动过滤
-input bool    VolatilityFilterEnabled = true;     // 启用波动过滤
-input int     ATRPeriod = 14;                     // ATR周期
-input double  MinATRValue = 0.0010;               // 最小ATR值（低于则认为波动过小）
-input double  MaxATRValue = 0.0200;               // 最大ATR值（高于则认为波动过大）
+// === Volatility Filter ===
+// 启用波动过滤
+input bool    VolatilityFilterEnabled = true;     // Enable Volatility Filter
+// ATR周期
+input int     ATRPeriod = 14;                     // ATR Period
+// 最小ATR值
+input double  MinATRValue = 0.0010;               // Min ATR Value
+// 最大ATR值
+input double  MaxATRValue = 0.0200;               // Max ATR Value
 
 //+------------------------------------------------------------------+
 //| 过滤器结果结构                                                      |
@@ -53,12 +69,12 @@ int      g_normalSpreadSamples = 0;
 //| 初始化过滤器                                                        |
 //+------------------------------------------------------------------+
 void InitTradeFilters() {
-   Print("[TradeFilters] 初始化过滤器模块");
-   Print("[TradeFilters] 周末过滤: ", WeekendFilterEnabled ? "启用" : "禁用");
-   Print("[TradeFilters] 假日过滤: ", HolidayFilterEnabled ? "启用" : "禁用");
-   Print("[TradeFilters] 新闻过滤: ", NewsFilterEnabled ? "启用" : "禁用");
-   Print("[TradeFilters] 点差过滤: ", SpreadFilterEnabled ? "启用" : "禁用");
-   Print("[TradeFilters] 波动过滤: ", VolatilityFilterEnabled ? "启用" : "禁用");
+   Print("[TradeFilters] Initializing filter module");  // 初始化过滤器模块
+   Print("[TradeFilters] Weekend Filter: ", WeekendFilterEnabled ? "ON" : "OFF");  // 周末过滤
+   Print("[TradeFilters] Holiday Filter: ", HolidayFilterEnabled ? "ON" : "OFF");  // 假日过滤
+   Print("[TradeFilters] News Filter: ", NewsFilterEnabled ? "ON" : "OFF");        // 新闻过滤
+   Print("[TradeFilters] Spread Filter: ", SpreadFilterEnabled ? "ON" : "OFF");    // 点差过滤
+   Print("[TradeFilters] Volatility Filter: ", VolatilityFilterEnabled ? "ON" : "OFF");  // 波动过滤
    
    // 初始化正常点差基准
    if(SpreadFilterEnabled) {
@@ -225,7 +241,7 @@ FilterResult CheckNewsFilter() {
       datetime newsTime = StringToTime(eventMT4);
       
       if(newsTime == 0) {
-         Print("[警告] 无法解析新闻时间: ", event, " (转换后: ", eventMT4, ")");
+         Print("[Warning] Failed to parse news time: ", event, " (converted: ", eventMT4, ")");  // 无法解析新闻时间
          continue;
       }
       
@@ -378,7 +394,7 @@ string GetFilterStatus(string symbol) {
 //| 记录过滤器拒绝日志                                                  |
 //+------------------------------------------------------------------+
 void LogFilterRejection(string filter_name, string reason) {
-   Print("[TradeFilters] ", filter_name, " 拒绝: ", reason);
+   Print("[TradeFilters] ", filter_name, " rejected: ", reason);  // 拒绝
 }
 
 //+------------------------------------------------------------------+

@@ -14,6 +14,9 @@ input int     TrendMA_Slow = 50;              // Slow EMA Period
 input int     TrendMA_Filter = 200;           // Long-term Filter EMA
 input int     ADX_Period = 14;                // ADX Period
 input double  ADX_Threshold = 25.0;           // ADX Threshold
+// 多时间框架过滤
+input bool    UseHigherTimeframe = true;      // Use Daily Trend Filter
+input int     HigherTimeframe = PERIOD_D1;    // Higher Timeframe (D1/W1/MN1)
 
 // === Pyramid Addition Parameters ===
 input int     MaxPyramidLevels = 4;           // Max Pyramid Levels
@@ -76,14 +79,14 @@ datetime        g_lastSignalTime = 0;       // Last signal time (prevent duplica
 //+------------------------------------------------------------------+
 void InitPyramidStrategy() {
    Print("========================================");
-   Print("趋势金字塔策略 - 机构级实现");
+   Print("Pyramid Trend Strategy - Institutional Grade");  // 趋势金字塔策略 - 机构级实现
    Print("========================================");
-   Print("趋势识别: EMA(", TrendMA_Fast, ") vs EMA(", TrendMA_Slow, ") + EMA(", TrendMA_Filter, ")");
-   Print("趋势强度: ADX(", ADX_Period, ") > ", ADX_Threshold);
-   Print("最大层数: ", MaxPyramidLevels);
-   Print("加仓比例: ", PyramidRatio);
-   Print("初始风险: ", InitialRiskPercent, "%");
-   Print("最大风险: ", MaxTotalRiskPercent, "%");
+   Print("Trend: EMA(", TrendMA_Fast, ") vs EMA(", TrendMA_Slow, ") + EMA(", TrendMA_Filter, ")");  // 趋势识别
+   Print("Strength: ADX(", ADX_Period, ") > ", ADX_Threshold);  // 趋势强度
+   Print("Max Levels: ", MaxPyramidLevels);  // 最大层数
+   Print("Pyramid Ratio: ", PyramidRatio);  // 加仓比例
+   Print("Initial Risk: ", InitialRiskPercent, "%");  // 初始风险
+   Print("Max Risk: ", MaxTotalRiskPercent, "%");  // 最大风险
    Print("========================================");
    
    ArrayResize(g_positions, 0);
@@ -101,20 +104,94 @@ void PyramidStrategyOnTick(string symbol) {
    // 2. 检查趋势
    TrendSignal trend = AnalyzeTrend(symbol);
    
-   // 3. 管理现有仓位
+   // 3. 可视化趋势（在图表上显示）
+   DrawTrendIndicator(symbol, trend);
+   
+   // 4. 管理现有仓位
    if(g_currentLevel > 0) {
       ManageExistingPositions(symbol, trend);
    }
    
-   // 4. 检查新入场机会
+   // 5. 检查新入场机会
    if(g_currentLevel == 0) {
       CheckEntrySignal(symbol, trend);
    }
    
-   // 5. 检查加仓机会
+   // 6. 检查加仓机会
    if(g_currentLevel > 0 && g_currentLevel < MaxPyramidLevels) {
       CheckPyramidSignal(symbol, trend);
    }
+}
+
+//+------------------------------------------------------------------+
+//| Demo模式 - 只显示信号，不真实下单                                  |
+//+------------------------------------------------------------------+
+void PyramidStrategyOnTick_DemoMode(string symbol) {
+   // 1. 检查趋势
+   TrendSignal trend = AnalyzeTrend(symbol);
+   
+   // 2. 可视化趋势（在图表上显示）
+   DrawTrendIndicator(symbol, trend);
+   
+   // 3. 检查并显示入场信号（但不下单）
+   CheckEntrySignal_DemoMode(symbol, trend);
+}
+
+//+------------------------------------------------------------------+
+//| Demo模式 - 检查入场信号（只显示，不下单）                          |
+//+------------------------------------------------------------------+
+void CheckEntrySignal_DemoMode(string symbol, TrendSignal trend) {
+   // 如果没有明确趋势，不触发
+   if(trend != TREND_UP && trend != TREND_DOWN) {
+      return;
+   }
+   
+   // 防止同一根K线重复信号
+   datetime currentBar = iTime(symbol, PERIOD_CURRENT, 0);
+   if(currentBar == g_lastSignalTime) {
+      return;
+   }
+   
+   // 趋势刚刚形成或延续
+   if(trend == g_currentTrend) {
+      return; // 趋势未变，不重复提示
+   }
+   
+   // 如果有反向趋势，先不入场（等待确认）
+   if(trend != g_currentTrend && g_currentTrend != TREND_NONE) {
+      return;
+   }
+   
+   // 触发信号提示
+   double price = (trend == TREND_UP) ? SymbolInfoDouble(symbol, SYMBOL_ASK) : 
+                                         SymbolInfoDouble(symbol, SYMBOL_BID);
+   double atr = iATR(symbol, PERIOD_CURRENT, 14, 0);
+   double stopLossDistance = atr * TrailStopATRMultiplier;
+   double lots = CalculateLotSize(symbol, stopLossDistance, InitialRiskPercent);
+   
+   // 在图表上画信号箭头
+   string signalName = StringFormat("DemoSignal_%d", currentBar);
+   if(ObjectFind(signalName) >= 0) {
+      ObjectDelete(signalName);
+   }
+   
+   int arrowCode = (trend == TREND_UP) ? 241 : 242;  // 买入/卖出箭头
+   color arrowColor = (trend == TREND_UP) ? clrLime : clrRed;
+   
+   if(ObjectCreate(signalName, OBJ_ARROW, 0, currentBar, price)) {
+      ObjectSet(signalName, OBJPROP_ARROWCODE, arrowCode);
+      ObjectSet(signalName, OBJPROP_COLOR, arrowColor);
+      ObjectSet(signalName, OBJPROP_WIDTH, 3);
+      ObjectSet(signalName, OBJPROP_BACK, false);
+   }
+   
+   // 打印信号
+   Print("[DEMO Signal] ", trend == TREND_UP ? "LONG" : "SHORT",
+         " | Price:", price, " | Lots:", lots, " | SL Distance:", stopLossDistance,
+         " | Risk:", InitialRiskPercent, "%");
+   
+   g_lastSignalTime = currentBar;
+   g_currentTrend = trend;
 }
 
 //+------------------------------------------------------------------+
@@ -137,20 +214,38 @@ TrendSignal AnalyzeTrend(string symbol) {
    // 判断逻辑：多重确认
    bool strongTrend = adx > ADX_Threshold;
    
+   // 4. 多时间框架过滤：检查日线趋势
+   TrendSignal htfTrend = TREND_NONE;
+   if(UseHigherTimeframe) {
+      htfTrend = AnalyzeHigherTimeframeTrend(symbol);
+   }
+   
    // 上升趋势：快线>慢线 + 价格>长期均线 + ADX强 + +DI>-DI
    if(ema_fast > ema_slow && price > ema_filter && strongTrend && plus_di > minus_di) {
+      // 如果启用了高周期过滤，必须日线也是上升趋势
+      if(UseHigherTimeframe && htfTrend != TREND_UP) {
+         return TREND_NONE; // 日线不是上升趋势，拒绝
+      }
+      
       if(g_currentTrend != TREND_UP) {
-         Print("[策略] 识别到上升趋势 - EMA(", TrendMA_Fast, "):", ema_fast, 
-               " > EMA(", TrendMA_Slow, "):", ema_slow, " | ADX:", adx);
+         Print("[Strategy] Uptrend detected - EMA(", TrendMA_Fast, "):", ema_fast,  // 识别到上升趋势
+               " > EMA(", TrendMA_Slow, "):", ema_slow, " | ADX:", adx,
+               UseHigherTimeframe ? " | Daily: UP" : "");
       }
       return TREND_UP;
    }
    
    // 下降趋势：快线<慢线 + 价格<长期均线 + ADX强 + -DI>+DI
    if(ema_fast < ema_slow && price < ema_filter && strongTrend && minus_di > plus_di) {
+      // 如果启用了高周期过滤，必须日线也是下降趋势
+      if(UseHigherTimeframe && htfTrend != TREND_DOWN) {
+         return TREND_NONE; // 日线不是下降趋势，拒绝
+      }
+      
       if(g_currentTrend != TREND_DOWN) {
-         Print("[策略] 识别到下降趋势 - EMA(", TrendMA_Fast, "):", ema_fast, 
-               " < EMA(", TrendMA_Slow, "):", ema_slow, " | ADX:", adx);
+         Print("[Strategy] Downtrend detected - EMA(", TrendMA_Fast, "):", ema_fast,  // 识别到下降趋势
+               " < EMA(", TrendMA_Slow, "):", ema_slow, " | ADX:", adx,
+               UseHigherTimeframe ? " | Daily: DOWN" : "");
       }
       return TREND_DOWN;
    }
@@ -158,6 +253,28 @@ TrendSignal AnalyzeTrend(string symbol) {
    // 趋势减弱：ADX下降
    if(adx < ADX_Threshold && g_currentLevel > 0) {
       return TREND_WEAK;
+   }
+   
+   return TREND_NONE;
+}
+
+//+------------------------------------------------------------------+
+//| 分析高周期趋势（日线/周线）                                         |
+//+------------------------------------------------------------------+
+TrendSignal AnalyzeHigherTimeframeTrend(string symbol) {
+   // 使用简化的趋势判断（只用均线）
+   double htf_ema_fast = iMA(symbol, HigherTimeframe, 21, 0, MODE_EMA, PRICE_CLOSE, 0);
+   double htf_ema_slow = iMA(symbol, HigherTimeframe, 50, 0, MODE_EMA, PRICE_CLOSE, 0);
+   double htf_price = iClose(symbol, HigherTimeframe, 0);
+   
+   // 上升趋势：快线>慢线 且 价格>快线
+   if(htf_ema_fast > htf_ema_slow && htf_price > htf_ema_fast) {
+      return TREND_UP;
+   }
+   
+   // 下降趋势：快线<慢线 且 价格<快线
+   if(htf_ema_fast < htf_ema_slow && htf_price < htf_ema_fast) {
+      return TREND_DOWN;
    }
    
    return TREND_NONE;
@@ -180,7 +297,7 @@ void CheckEntrySignal(string symbol, TrendSignal trend) {
    }
    
    // 触发入场
-   Print("[信号] 初始入场信号 - 趋势方向:", trend == TREND_UP ? "做多" : "做空");
+   Print("[Signal] Initial entry signal - Direction:", trend == TREND_UP ? "LONG" : "SHORT");  // 初始入场信号
    
    ExecuteInitialEntry(symbol, trend);
    
@@ -202,7 +319,7 @@ void ExecuteInitialEntry(string symbol, TrendSignal trend) {
    double lots = CalculateLotSize(symbol, stopLossDistance, InitialRiskPercent);
    
    if(lots < SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN)) {
-      Print("[错误] 计算手数过小:", lots);
+      Print("[Error] Calculated lot size too small:", lots);  // 计算手数过小
       return;
    }
    
@@ -219,15 +336,18 @@ void ExecuteInitialEntry(string symbol, TrendSignal trend) {
                          trend == TREND_UP ? clrBlue : clrRed);
    
    if(ticket > 0) {
-      Print("[开仓成功] Level 0 - Ticket:", ticket, " | 手数:", lots, 
-            " | 止损距离:", stopLossDistance, " | 风险:", InitialRiskPercent, "%");
+      Print("[Entry Success] Level 0 - Ticket:", ticket, " | Lots:", lots,  // 开仓成功
+            " | SL Distance:", stopLossDistance, " | Risk:", InitialRiskPercent, "%");
+      
+      // 在图表上标记入场点
+      DrawOrderMarker(symbol, ticket, price, trend, 0);
       
       // 添加到仓位数组
       AddPositionToArray(ticket, 0, price, lots, sl, tp);
       g_currentLevel = 1;
       g_lastAddPrice = price;
    } else {
-      Print("[开仓失败] 错误码:", GetLastError());
+      Print("[Entry Failed] Error code:", GetLastError());  // 开仓失败
    }
 }
 
@@ -265,13 +385,13 @@ void CheckPyramidSignal(string symbol, TrendSignal trend) {
    // 4. 检查总风险是否超限
    double totalRisk = CalculateTotalRisk(symbol);
    if(totalRisk >= MaxTotalRiskPercent) {
-      Print("[风控] 总风险已达上限:", totalRisk, "% >= ", MaxTotalRiskPercent, "%");
+      Print("[Risk Control] Total risk limit reached:", totalRisk, "% >= ", MaxTotalRiskPercent, "%");  // 总风险已达上限
       return;
    }
    
    // 5. 触发加仓
-   Print("[信号] 金字塔加仓 Level ", g_currentLevel, " - 盈利点数:", profitPoints, 
-         " | 价格移动:", priceMove, " (要求:", requiredMove, ")");
+   Print("[Signal] Pyramid addition Level ", g_currentLevel, " - Profit pts:", profitPoints,  // 金字塔加仓
+         " | Price move:", priceMove, " (Required:", requiredMove, ")");
    
    ExecutePyramidAdd(symbol, trend);
 }
@@ -285,7 +405,7 @@ void ExecutePyramidAdd(string symbol, TrendSignal trend) {
    double newLots = NormalizeDouble(lastPos.lots * PyramidRatio, 2);
    
    if(newLots < SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN)) {
-      Print("[警告] 加仓手数过小，停止加仓");
+      Print("[Warning] Add lot size too small, stop adding");  // 加仓手数过小，停止加仓
       return;
    }
    
@@ -304,8 +424,11 @@ void ExecutePyramidAdd(string symbol, TrendSignal trend) {
                          StringFormat("金字塔L%d", g_currentLevel), 12345, 0, clrGreen);
    
    if(ticket > 0) {
-      Print("[加仓成功] Level ", g_currentLevel, " - Ticket:", ticket, 
-            " | 手数:", newLots, " (", PyramidRatio*100, "%)");
+      Print("[Add Success] Level ", g_currentLevel, " - Ticket:", ticket,  // 加仓成功
+            " | Lots:", newLots, " (", PyramidRatio*100, "%)");
+      
+      // 在图表上标记加仓点
+      DrawOrderMarker(symbol, ticket, price, g_currentTrend, g_currentLevel);
       
       AddPositionToArray(ticket, g_currentLevel, price, newLots, sl, 0);
       g_currentLevel++;
@@ -314,7 +437,7 @@ void ExecutePyramidAdd(string symbol, TrendSignal trend) {
       // 更新所有仓位的止损（移动到盈亏平衡或追踪）
       UpdateAllStopLosses(symbol);
    } else {
-      Print("[加仓失败] 错误码:", GetLastError());
+      Print("[Add Failed] Error code:", GetLastError());  // 加仓失败
    }
 }
 
@@ -324,15 +447,15 @@ void ExecutePyramidAdd(string symbol, TrendSignal trend) {
 void ManageExistingPositions(string symbol, TrendSignal trend) {
    // 1. 检查趋势反转 - 全部平仓
    if(ExitOnTrendReverse && trend != g_currentTrend && trend != TREND_NONE) {
-      Print("[退出] 趋势反转 - 全部平仓");
-      CloseAllPyramidPositions(symbol, "趋势反转");
+      Print("[Exit] Trend reversal - Close all");  // 趋势反转 - 全部平仓
+      CloseAllPyramidPositions(symbol, "Trend Reversal");
       return;
    }
    
    // 2. 检查趋势减弱 - 全部平仓
    if(trend == TREND_WEAK) {
-      Print("[退出] 趋势减弱 - 全部平仓");
-      CloseAllPyramidPositions(symbol, "趋势减弱");
+      Print("[Exit] Trend weakening - Close all");  // 趋势减弱 - 全部平仓
+      CloseAllPyramidPositions(symbol, "Trend Weakening");
       return;
    }
    
@@ -349,8 +472,20 @@ void ManageExistingPositions(string symbol, TrendSignal trend) {
 //| 更新所有仓位的追踪止损                                             |
 //+------------------------------------------------------------------+
 void UpdateAllStopLosses(string symbol) {
+   // 使用静态变量控制更新频率（避免每个tick都修改）
+   static datetime lastUpdateTime = 0;
+   datetime currentBar = iTime(symbol, PERIOD_CURRENT, 0);
+   
+   // 只在新K线时更新止损（大幅减少修改次数）
+   if(currentBar == lastUpdateTime) {
+      return;
+   }
+   lastUpdateTime = currentBar;
+   
    double atr = iATR(symbol, PERIOD_CURRENT, 14, 0);
    double trailDistance = atr * TrailStopATRMultiplier;
+   double minStepPoints = 50; // 最小移动50点才修改（避免频繁小幅修改）
+   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
    
    for(int i = 0; i < ArraySize(g_positions); i++) {
       if(!OrderSelect(g_positions[i].ticket, SELECT_BY_TICKET)) continue;
@@ -367,14 +502,14 @@ void UpdateAllStopLosses(string symbol) {
          
          // 盈亏平衡止损
          if(UseBreakEvenStop && currentPrice > OrderOpenPrice() + trailDistance) {
-            double breakEvenSL = OrderOpenPrice() + 10 * SymbolInfoDouble(symbol, SYMBOL_POINT);
+            double breakEvenSL = OrderOpenPrice() + 10 * point;
             if(newSL < breakEvenSL) newSL = breakEvenSL;
          }
          
-         // 只向上移动
-         if(newSL > currentSL) {
+         // 只在移动距离足够大时才修改（减少不必要的修改）
+         if(newSL > currentSL && (newSL - currentSL) > minStepPoints * point) {
             if(OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrBlue)) {
-               Print("[止损更新] Ticket:", OrderTicket(), " | 新SL:", newSL, " | 追踪距离:", trailDistance);
+               Print("[SL Update] Ticket:", OrderTicket(), " | New SL:", newSL, " | Trail:", trailDistance);
             }
          }
       } else {
@@ -382,14 +517,14 @@ void UpdateAllStopLosses(string symbol) {
          newSL = currentPrice + trailDistance;
          
          if(UseBreakEvenStop && currentPrice < OrderOpenPrice() - trailDistance) {
-            double breakEvenSL = OrderOpenPrice() - 10 * SymbolInfoDouble(symbol, SYMBOL_POINT);
+            double breakEvenSL = OrderOpenPrice() - 10 * point;
             if(newSL > breakEvenSL) newSL = breakEvenSL;
          }
          
-         // 只向下移动
-         if(newSL < currentSL || currentSL == 0) {
+         // 只在移动距离足够大时才修改
+         if((newSL < currentSL || currentSL == 0) && (currentSL == 0 || (currentSL - newSL) > minStepPoints * point)) {
             if(OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrRed)) {
-               Print("[止损更新] Ticket:", OrderTicket(), " | 新SL:", newSL);
+               Print("[SL Update] Ticket:", OrderTicket(), " | New SL:", newSL);
             }
          }
       }
@@ -427,7 +562,7 @@ void CheckPartialTakeProfit(string symbol) {
             bool closed = OrderClose(OrderTicket(), closeLots, closePrice, 3, clrOrange);
             
             if(closed) {
-               Print("[分批止盈] Ticket:", OrderTicket(), " | 平仓:", closeLots, "手 (", 
+               Print("[Partial TP] Ticket:", OrderTicket(), " | Closed:", closeLots, " lots (",  // 分批止盈
                      PartialTP_Percent*100, "%) | R:R=", currentRR);
                g_positions[i].isPartialClosed = true;
             }
@@ -451,8 +586,8 @@ void CloseAllPyramidPositions(string symbol, string reason) {
       bool closed = OrderClose(OrderTicket(), OrderLots(), closePrice, 5, clrYellow);
       
       if(closed) {
-         Print("[平仓] Ticket:", OrderTicket(), " | Level:", g_positions[i].level, 
-               " | 原因:", reason, " | 盈利:", OrderProfit());
+         Print("[Close] Ticket:", OrderTicket(), " | Level:", g_positions[i].level,  // 平仓
+               " | Reason:", reason, " | Profit:", OrderProfit());
       }
    }
    
@@ -557,9 +692,9 @@ void UpdatePositionArray(string symbol) {
 //| 获取策略状态（用于监控）                                           |
 //+------------------------------------------------------------------+
 string GetPyramidStatus() {
-   string status = StringFormat("趋势:%s | 层数:%d/%d | 仓位数:%d", 
-                                g_currentTrend == TREND_UP ? "上升" : 
-                                g_currentTrend == TREND_DOWN ? "下降" : "无",
+   string status = StringFormat("Trend:%s | Level:%d/%d | Positions:%d",  // 趋势 | 层数 | 仓位数
+                                g_currentTrend == TREND_UP ? "UP" : 
+                                g_currentTrend == TREND_DOWN ? "DOWN" : "NONE",
                                 g_currentLevel, MaxPyramidLevels,
                                 ArraySize(g_positions));
    
@@ -570,10 +705,221 @@ string GetPyramidStatus() {
             totalProfit += OrderProfit();
          }
       }
-      status += StringFormat(" | 总盈利:$%.2f", totalProfit);
+      status += StringFormat(" | Profit:$%.2f", totalProfit);  // 总盈利
    }
    
    return status;
+}
+
+//+------------------------------------------------------------------+
+//| 可视化趋势指示器（在图表上显示）                                    |
+//+------------------------------------------------------------------+
+void DrawTrendIndicator(string symbol, TrendSignal trend) {
+   // 获取ADX值
+   double adx = iADX(symbol, PERIOD_CURRENT, ADX_Period, PRICE_CLOSE, MODE_MAIN, 0);
+   
+   // 使用静态变量减少更新频率
+   static TrendSignal lastDrawnTrend = TREND_NONE;
+   static datetime lastDrawnTime = 0;
+   static int updateCounter = 0;
+   datetime currentBar = iTime(symbol, PERIOD_CURRENT, 0);
+   
+   // 每10个tick更新一次标签（减少刷新频率）
+   updateCounter++;
+   if(updateCounter >= 10 || currentBar != lastDrawnTime) {
+      DrawTrendLabel(trend, adx);
+      updateCounter = 0;
+   }
+   
+   // 如果无明确趋势，只显示标签，不显示箭头
+   if(trend == TREND_NONE) {
+      return;
+   }
+   
+   // 检查是否是新K线或趋势变化
+   bool shouldDraw = (currentBar != lastDrawnTime) || (trend != lastDrawnTrend);
+   
+   if(!shouldDraw) {
+      return; // 同一根K线，趋势未变，不重复画
+   }
+   
+   // 获取当前K线时间和价格
+   double price = iClose(symbol, PERIOD_CURRENT, 0);
+   
+   // 根据趋势方向选择箭头和颜色
+   int arrowCode;
+   color arrowColor;
+   string text;
+   
+   if(trend == TREND_UP) {
+      arrowCode = 233;  // 上箭头
+      arrowColor = clrLime;
+      text = "UP";
+   } else if(trend == TREND_DOWN) {
+      arrowCode = 234;  // 下箭头
+      arrowColor = clrRed;
+      text = "DOWN";
+   } else if(trend == TREND_WEAK) {
+      arrowCode = 108;  // 圆点
+      arrowColor = clrOrange;
+      text = "WEAK";
+   }
+   
+   // 创建唯一的对象名（带时间戳）
+   string objName = StringFormat("PyramidTrend_Arrow_%d", currentBar);
+   
+   // 删除旧对象（如果存在）
+   if(ObjectFind(objName) >= 0) {
+      ObjectDelete(objName);
+   }
+   
+   // 创建箭头标记
+   if(ObjectCreate(objName, OBJ_ARROW, 0, currentBar, price)) {
+      ObjectSet(objName, OBJPROP_ARROWCODE, arrowCode);
+      ObjectSet(objName, OBJPROP_COLOR, arrowColor);
+      ObjectSet(objName, OBJPROP_WIDTH, 2);
+      ObjectSet(objName, OBJPROP_BACK, false);  // 前景显示
+   }
+   
+   // 创建文本标签
+   string textName = StringFormat("PyramidTrend_Text_%d", currentBar);
+   if(ObjectFind(textName) >= 0) {
+      ObjectDelete(textName);
+   }
+   
+   string fullText = StringFormat("%s(%.0f)", text, adx);
+   
+   // 调整文本位置（在箭头旁边）
+   double textPrice = price;
+   double atr = iATR(symbol, PERIOD_CURRENT, 14, 0);
+   if(trend == TREND_UP) {
+      textPrice = price - atr * 0.5;
+   } else {
+      textPrice = price + atr * 0.5;
+   }
+   
+   if(ObjectCreate(textName, OBJ_TEXT, 0, currentBar, textPrice)) {
+      ObjectSetText(textName, fullText, 9, "Arial", arrowColor);
+      ObjectSet(textName, OBJPROP_BACK, false);
+   }
+   
+   // 记录本次绘制
+   lastDrawnTrend = trend;
+   lastDrawnTime = currentBar;
+}
+
+//+------------------------------------------------------------------+
+//| 在图表右上角显示趋势状态                                           |
+//+------------------------------------------------------------------+
+void DrawTrendLabel(TrendSignal trend, double adx) {
+   string labelName = "PyramidTrend_Status";
+   ObjectDelete(labelName);
+   
+   // 创建标签
+   ObjectCreate(labelName, OBJ_LABEL, 0, 0, 0);
+   ObjectSet(labelName, OBJPROP_CORNER, CORNER_RIGHT_UPPER);
+   ObjectSet(labelName, OBJPROP_XDISTANCE, 10);
+   ObjectSet(labelName, OBJPROP_YDISTANCE, 50);
+   
+   string text;
+   color textColor;
+   
+   if(trend == TREND_UP) {
+      text = StringFormat("▲ UPTREND | ADX: %.1f | Levels: %d/%d", 
+                          adx, g_currentLevel, MaxPyramidLevels);
+      textColor = clrLime;
+   } else if(trend == TREND_DOWN) {
+      text = StringFormat("▼ DOWNTREND | ADX: %.1f | Levels: %d/%d", 
+                          adx, g_currentLevel, MaxPyramidLevels);
+      textColor = clrRed;
+   } else if(trend == TREND_WEAK) {
+      text = StringFormat("● WEAK TREND | ADX: %.1f", adx);
+      textColor = clrOrange;
+   } else {
+      text = StringFormat("○ NO TREND | ADX: %.1f", adx);
+      textColor = clrGray;
+   }
+   
+   ObjectSetText(labelName, text, 12, "Arial Bold", textColor);
+}
+
+//+------------------------------------------------------------------+
+//| 在图表上标记订单（入场/加仓）                                        |
+//+------------------------------------------------------------------+
+void DrawOrderMarker(string symbol, int ticket, double price, TrendSignal trend, int level) {
+   datetime orderTime = TimeCurrent();
+   if(OrderSelect(ticket, SELECT_BY_TICKET)) {
+      orderTime = OrderOpenTime();
+   }
+   
+   string objName = StringFormat("Order_%d", ticket);
+   
+   // 删除旧对象（如果存在）
+   if(ObjectFind(objName) >= 0) {
+      ObjectDelete(objName);
+   }
+   
+   // 根据方向和层级选择箭头和颜色
+   int arrowCode;
+   color arrowColor;
+   
+   if(trend == TREND_UP) {
+      arrowCode = (level == 0) ? 1 : 3;  // Level 0: 大圆点, Level 1+: 小圆点
+      arrowColor = clrLime;
+   } else {
+      arrowCode = (level == 0) ? 1 : 3;
+      arrowColor = clrRed;
+   }
+   
+   // 创建箭头标记
+   if(ObjectCreate(objName, OBJ_ARROW, 0, orderTime, price)) {
+      ObjectSet(objName, OBJPROP_ARROWCODE, arrowCode);
+      ObjectSet(objName, OBJPROP_COLOR, arrowColor);
+      ObjectSet(objName, OBJPROP_WIDTH, level == 0 ? 4 : 2);  // Level 0更大
+      ObjectSet(objName, OBJPROP_BACK, false);
+   }
+   
+   // 添加文本标签显示Level和手数
+   string textName = StringFormat("OrderText_%d", ticket);
+   if(ObjectFind(textName) >= 0) {
+      ObjectDelete(textName);
+   }
+   
+   double lots = 0;
+   if(OrderSelect(ticket, SELECT_BY_TICKET)) {
+      lots = OrderLots();
+   }
+   
+   string text = StringFormat("L%d: %.2f", level, lots);
+   double atr = iATR(symbol, PERIOD_CURRENT, 14, 0);
+   double textPrice = (trend == TREND_UP) ? price - atr * 0.3 : price + atr * 0.3;
+   
+   if(ObjectCreate(textName, OBJ_TEXT, 0, orderTime, textPrice)) {
+      ObjectSetText(textName, text, 8, "Arial", arrowColor);
+      ObjectSet(textName, OBJPROP_BACK, false);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| 清理图表对象                                                       |
+//+------------------------------------------------------------------+
+void CleanupChartObjects() {
+   // 清理趋势状态标签
+   ObjectDelete("PyramidTrend_Status");
+   
+   // 清理所有趋势箭头和文本（按时间命名的对象）
+   int totalObjects = ObjectsTotal();
+   for(int i = totalObjects - 1; i >= 0; i--) {
+      string objName = ObjectName(i);
+      
+      // 删除所有PyramidTrend相关对象
+      if(StringFind(objName, "PyramidTrend_") >= 0 || 
+         StringFind(objName, "DemoSignal_") >= 0 ||
+         StringFind(objName, "Order_") >= 0 ||
+         StringFind(objName, "OrderText_") >= 0) {
+         ObjectDelete(objName);
+      }
+   }
 }
 //+------------------------------------------------------------------+
 

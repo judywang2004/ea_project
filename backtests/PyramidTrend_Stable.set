@@ -1,0 +1,56 @@
+; PyramidTrend_EA 稳健型参数配置
+; 适合回测和模拟账户测试
+
+; === Basic Settings ===
+MagicNumber=88888
+TradeComment=金字塔趋势
+
+; === Filter Switches ===
+EnableFilters=true
+EnableWeekendFilter=true
+EnableSpreadFilter=true
+EnableVolatilityFilter=true
+
+; === Trend Identification Parameters ===
+TrendMA_Fast=20
+TrendMA_Slow=50
+TrendMA_Filter=200
+ADX_Period=14
+ADX_Threshold=25.0
+
+; === Pyramid Addition Parameters ===
+MaxPyramidLevels=3
+PyramidRatio=0.618
+MinProfitPointsToAdd=50
+PriceDistanceMultiplier=1.5
+
+; === Risk Management Parameters ===
+InitialRiskPercent=0.5
+MaxTotalRiskPercent=2.0
+TrailStopATRMultiplier=2.5
+UseBreakEvenStop=true
+
+; === Exit Rules Parameters ===
+ExitOnTrendReverse=true
+UsePartialTakeProfit=true
+PartialTP_Percent=0.3
+PartialTP_RR=2.0
+
+; === Filter Parameters (from trade_filters.mqh) ===
+WeekendFilterEnabled=true
+FridayCloseHour=21
+MondayOpenHour=3
+HolidayFilterEnabled=true
+HolidayList=2025-01-01,2025-12-25
+NewsFilterEnabled=true
+NewsAvoidMinutesBefore=30
+NewsAvoidMinutesAfter=30
+NewsEvents=
+SpreadFilterEnabled=true
+MaxSpreadPoints=30
+NormalSpreadMultiplier=2.5
+VolatilityFilterEnabled=true
+ATRPeriod=14
+MinATRValue=0.0010
+MaxATRValue=0.0200
+
