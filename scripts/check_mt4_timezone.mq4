@@ -25,10 +25,13 @@ void OnStart() {
    Print("Local Time: ", TimeToStr(localTime, TIME_DATE|TIME_MINUTES));
    Print("本地时间: ", TimeToStr(localTime, TIME_DATE|TIME_MINUTES));
    
-   // 计算时差
-   int diffHours = int((serverTime - localTime) / 3600);
-   Print("Time Difference: ", diffHours, " hours");
-   Print("时差: ", diffHours, " 小时");
+   // 计算时差 (Calculate time difference)
+   int diffSeconds = (int)(serverTime - localTime);
+   int diffHours = diffSeconds / 3600;
+   int diffMinutes = (diffSeconds % 3600) / 60;
+   
+   Print("Time Difference: ", diffHours, " hours, ", diffMinutes, " minutes");
+   Print("时差: ", diffHours, " 小时 ", diffMinutes, " 分钟");
    
    // 估算MT4时区
    Print("");
