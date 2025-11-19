@@ -12,11 +12,20 @@ echo "  EA Project 自动安装脚本"
 echo "========================================="
 echo ""
 
-# 让用户输入MT4数据文件夹路径
-echo "${YELLOW}请输入您的MT4数据文件夹路径:${NC}"
-echo "（通常是: ~/Library/Application Support/MetaTrader 4/[经纪商名称]）"
+# 默认MT4数据文件夹路径
+DEFAULT_MT4_DIR="/Users/judywang/Library/Application Support/MetaTrader 4/Bottles/metatrader64/drive_c/Program Files (x86)/MetaTrader 4"
+
+echo "${YELLOW}MT4数据文件夹路径:${NC}"
+echo "默认路径: ${GREEN}$DEFAULT_MT4_DIR${NC}"
 echo ""
-read -p "MT4数据文件夹: " MT4_DATA_DIR
+echo "按回车使用默认路径，或输入自定义路径："
+read -p "MT4数据文件夹 [默认]: " MT4_DATA_DIR
+
+# 如果用户没输入，使用默认路径
+if [ -z "$MT4_DATA_DIR" ]; then
+    MT4_DATA_DIR="$DEFAULT_MT4_DIR"
+    echo "${GREEN}使用默认路径${NC}"
+fi
 
 # 验证路径
 if [ ! -d "$MT4_DATA_DIR" ]; then
