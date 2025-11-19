@@ -13,9 +13,9 @@ input int     TrendMA_Fast = 20;              // Fast EMA Period
 input int     TrendMA_Slow = 50;              // Slow EMA Period  
 input int     TrendMA_Filter = 200;           // Long-term Filter EMA
 input int     ADX_Period = 14;                // ADX Period
-input double  ADX_Threshold = 25.0;           // ADX Threshold
+input double  ADX_Threshold = 20.0;           // ADX Threshold (relaxed from 25 to capture more opportunities)
 // 多时间框架过滤
-input bool    UseHigherTimeframe = true;      // Use Daily Trend Filter
+input bool    UseHigherTimeframe = true;      // Use Daily Trend Filter (RE-ENABLED with relaxed thresholds)
 input int     HigherTimeframe = PERIOD_D1;    // Higher Timeframe (D1/W1/MN1)
 
 // === Pyramid Addition Parameters ===
@@ -27,7 +27,8 @@ input double  PriceDistanceMultiplier = 1.5; // Price Distance Multiplier (x ATR
 // === Risk Management Parameters ===
 input double  InitialRiskPercent = 0.5;       // Initial Risk Percent (default 0.5% per .cursorrules)
 input double  MaxTotalRiskPercent = 2.0;      // Max Total Risk Percent (default <=2% per .cursorrules)
-input double  TrailStopATRMultiplier = 2.5;   // Trail Stop ATR Multiplier
+input double  InitialStopLossATRMultiplier = 4.5; // Initial Stop Loss ATR Multiplier (wider to survive healthy pullbacks)
+input double  TrailStopATRMultiplier = 3.5;   // Trail Stop ATR Multiplier (Phase 1.1: relaxed from 2.5 to 3.5)
 input bool    UseBreakEvenStop = true;        // Use Break Even Stop
 
 // === Exit Rules Parameters ===
@@ -59,6 +60,35 @@ enum TrendSignal {
    TREND_DOWN = -1,     // Downtrend
    TREND_WEAK = 99      // Weak Trend
 };
+
+//+------------------------------------------------------------------+
+//| Market State Enumeration (Phase 2.0: SuperTrend + ADX + DI)
+//+------------------------------------------------------------------+
+enum MarketState {
+   MARKET_STRONG_UPTREND,      // Strong Uptrend (ADX>25, ST bullish, +DI>-DI)
+   MARKET_WEAK_UPTREND,        // Weak Uptrend (ADX 20-25, ST bullish)
+   MARKET_STRONG_DOWNTREND,    // Strong Downtrend (ADX>25, ST bearish, -DI>+DI)
+   MARKET_WEAK_DOWNTREND,      // Weak Downtrend (ADX 20-25, ST bearish)
+   MARKET_RANGING,             // Ranging Market (ADX<20 or unclear direction)
+   MARKET_UNCERTAIN            // Uncertain (transition period)
+};
+
+//+------------------------------------------------------------------+
+//| SuperTrend Result Structure
+//+------------------------------------------------------------------+
+struct SuperTrendResult {
+   double upper_band;    // Upper band (for downtrend)
+   double lower_band;    // Lower band (for uptrend)
+   int    direction;     // 1=bullish, -1=bearish, 0=neutral
+   double atr_value;     // ATR value used
+};
+
+//+------------------------------------------------------------------+
+//| SuperTrend Parameters (Phase 2.0)
+//+------------------------------------------------------------------+
+input bool    UseSuperTrend = true;           // Use SuperTrend for Market State (Phase 2.0 Enhanced)
+input int     SuperTrend_Period = 10;         // SuperTrend ATR Period
+input double  SuperTrend_Multiplier = 3.0;    // SuperTrend ATR Multiplier
 
 //+------------------------------------------------------------------+
 //| Global Variables
@@ -195,6 +225,142 @@ void CheckEntrySignal_DemoMode(string symbol, TrendSignal trend) {
 }
 
 //+------------------------------------------------------------------+
+//| 计算 SuperTrend 指标 (Phase 2.0 - 简化版，无缓存)
+//+------------------------------------------------------------------+
+SuperTrendResult CalculateSuperTrend(string symbol, int timeframe, int shift = 0) {
+   SuperTrendResult result;
+   
+   // 获取当前K线数据
+   double atr = iATR(symbol, timeframe, SuperTrend_Period, shift);
+   double high = iHigh(symbol, timeframe, shift);
+   double low = iLow(symbol, timeframe, shift);
+   double close = iClose(symbol, timeframe, shift);
+   
+   result.atr_value = atr;
+   
+   // 计算基础上下轨
+   double hl_avg = (high + low) / 2.0;
+   double basic_upper = hl_avg + SuperTrend_Multiplier * atr;
+   double basic_lower = hl_avg - SuperTrend_Multiplier * atr;
+   
+   // 简化版：只计算最近几根K线的SuperTrend
+   // 足够用于判断当前趋势方向
+   
+   // 获取前一根K线数据（用于平滑）
+   if(shift < iBars(symbol, timeframe) - 1) {
+      double prev_atr = iATR(symbol, timeframe, SuperTrend_Period, shift + 1);
+      double prev_high = iHigh(symbol, timeframe, shift + 1);
+      double prev_low = iLow(symbol, timeframe, shift + 1);
+      double prev_close = iClose(symbol, timeframe, shift + 1);
+      
+      double prev_hl_avg = (prev_high + prev_low) / 2.0;
+      double prev_basic_upper = prev_hl_avg + SuperTrend_Multiplier * prev_atr;
+      double prev_basic_lower = prev_hl_avg - SuperTrend_Multiplier * prev_atr;
+      
+      // 计算最终上下轨（带简单平滑）
+      // 下轨（上升趋势支撑线）：只能上升不能下降
+      double final_lower = (basic_lower > prev_basic_lower) ? basic_lower : prev_basic_lower;
+      
+      // 上轨（下降趋势阻力线）：只能下降不能上升  
+      double final_upper = (basic_upper < prev_basic_upper) ? basic_upper : prev_basic_upper;
+      
+      // 检查趋势转换
+      if(prev_close > prev_basic_upper) {
+         // 前一根突破上轨 → 转为上升趋势
+         final_lower = basic_lower;
+         result.lower_band = final_lower;
+         result.upper_band = basic_upper;  // 上轨不用于当前判断
+      } else if(prev_close < prev_basic_lower) {
+         // 前一根跌破下轨 → 转为下降趋势
+         final_upper = basic_upper;
+         result.lower_band = basic_lower;  // 下轨不用于当前判断
+         result.upper_band = final_upper;
+      } else {
+         // 继续之前的趋势
+         result.lower_band = final_lower;
+         result.upper_band = final_upper;
+      }
+   } else {
+      // 第一根K线
+      result.lower_band = basic_lower;
+      result.upper_band = basic_upper;
+   }
+   
+   // 判断趋势方向
+   if(close > result.lower_band) {
+      result.direction = 1;   // 上升趋势（价格在下轨上方）
+   } else if(close < result.upper_band) {
+      result.direction = -1;  // 下降趋势（价格在上轨下方）
+   } else {
+      result.direction = 0;   // 中性（价格在上下轨之间）
+   }
+   
+   return result;
+}
+
+//+------------------------------------------------------------------+
+//| 识别市场状态 (Phase 2.1: 简化为MA + ADX判断，禁用SuperTrend/DI)
+//+------------------------------------------------------------------+
+MarketState IdentifyMarketState(string symbol) {
+   // === 使用前一根完成的Daily K线（更稳定可靠） ===
+   double daily_close = iClose(symbol, PERIOD_D1, 1);
+   
+   // === 计算 Daily MA50 和 MA200 ===
+   double daily_ma50 = iMA(symbol, PERIOD_D1, 50, 0, MODE_SMA, PRICE_CLOSE, 1);
+   double daily_ma200 = iMA(symbol, PERIOD_D1, 200, 0, MODE_SMA, PRICE_CLOSE, 1);
+   
+   // === 计算 Daily ADX（趋势强度） ===
+   double daily_adx = iADX(symbol, PERIOD_D1, ADX_Period, PRICE_CLOSE, MODE_MAIN, 1);
+   
+   // === 趋势方向判断（基于MA位置关系） ===
+   bool price_above_ma200 = (daily_close > daily_ma200);
+   bool price_above_ma50 = (daily_close > daily_ma50);
+   bool ma50_above_ma200 = (daily_ma50 > daily_ma200);  // 长期趋势向上
+   
+   // === 趋势强度判断 ===
+   bool strong_trend = (daily_adx > 20.0);  // ADX > 20 = 有趋势
+   
+   // === 综合判断市场状态 ===
+   
+   // 上升趋势：严格要求 价格 > MA50 > MA200 + ADX > 20
+   // 只在完全确认的上升趋势中做多
+   if(price_above_ma50 && price_above_ma200 && ma50_above_ma200 && strong_trend) {
+      Print("[Market] UPTREND confirmed - Close:", daily_close,
+            " > MA50:", daily_ma50, " > MA200:", daily_ma200,
+            " | ADX:", daily_adx);
+      return MARKET_STRONG_UPTREND;
+   }
+   
+   // 下降趋势：严格要求 价格 < MA50 < MA200 + ADX > 20
+   // 只在完全确认的下降趋势中做空
+   if(!price_above_ma50 && !price_above_ma200 && !ma50_above_ma200 && strong_trend) {
+      Print("[Market] DOWNTREND confirmed - Close:", daily_close,
+            " < MA50:", daily_ma50, " < MA200:", daily_ma200,
+            " | ADX:", daily_adx);
+      return MARKET_STRONG_DOWNTREND;
+   }
+   
+   // 其他所有情况：震荡/过渡期/不确定（包括价格在MA之间）
+   // 价格在MA50和MA200之间 = 趋势不明确 = 不交易
+   string reason = "";
+   if(price_above_ma200 && !price_above_ma50 && ma50_above_ma200) {
+      reason = "Price between MAs (transition up)";
+   } else if(!price_above_ma200 && price_above_ma50 && !ma50_above_ma200) {
+      reason = "Price between MAs (transition down)";
+   } else if(!strong_trend) {
+      reason = "ADX too weak";
+   } else {
+      reason = "MA alignment unclear";
+   }
+   
+   Print("[Market] RANGING/UNCERTAIN - ", reason,
+         " | Close:", daily_close,
+         " | MA50:", daily_ma50, " | MA200:", daily_ma200,
+         " | ADX:", daily_adx);
+   return MARKET_RANGING;
+}
+
+//+------------------------------------------------------------------+
 //| 趋势分析 - 多重确认                                                |
 //+------------------------------------------------------------------+
 TrendSignal AnalyzeTrend(string symbol) {
@@ -216,21 +382,55 @@ TrendSignal AnalyzeTrend(string symbol) {
    
    // 4. 多时间框架过滤：检查日线趋势
    TrendSignal htfTrend = TREND_NONE;
+   MarketState marketState = MARKET_UNCERTAIN;
+   
    if(UseHigherTimeframe) {
-      htfTrend = AnalyzeHigherTimeframeTrend(symbol);
+      if(UseSuperTrend) {
+         // Phase 2.0: 使用SuperTrend + ADX + DI识别市况
+         marketState = IdentifyMarketState(symbol);
+         
+         // 将市况转换为趋势信号（用于兼容现有逻辑）
+         if(marketState == MARKET_STRONG_UPTREND || marketState == MARKET_WEAK_UPTREND) {
+            htfTrend = TREND_UP;
+         } else if(marketState == MARKET_STRONG_DOWNTREND || marketState == MARKET_WEAK_DOWNTREND) {
+            htfTrend = TREND_DOWN;
+         } else {
+            htfTrend = TREND_NONE;  // RANGING 或 UNCERTAIN 时不交易
+         }
+      } else {
+         // 旧方法：使用MA过滤
+         htfTrend = AnalyzeHigherTimeframeTrend(symbol);
+      }
    }
    
    // 上升趋势：快线>慢线 + 价格>长期均线 + ADX强 + +DI>-DI
    if(ema_fast > ema_slow && price > ema_filter && strongTrend && plus_di > minus_di) {
       // 如果启用了高周期过滤，必须日线也是上升趋势
       if(UseHigherTimeframe && htfTrend != TREND_UP) {
+         if(UseSuperTrend) {
+            // Phase 2.0: SuperTrend 拒绝理由
+            string state_name = "UNKNOWN";
+            if(marketState == MARKET_RANGING) state_name = "RANGING";
+            else if(marketState == MARKET_UNCERTAIN) state_name = "UNCERTAIN";
+            else if(marketState == MARKET_STRONG_DOWNTREND) state_name = "STRONG DOWNTREND";
+            else if(marketState == MARKET_WEAK_DOWNTREND) state_name = "WEAK DOWNTREND";
+            
+            Print("[Filter] H1 Uptrend detected but REJECTED by Daily SuperTrend filter");
+            Print("[Filter] Daily market state: ", state_name);
+            Print("[Filter] Required: STRONG_UPTREND or WEAK_UPTREND");
+         } else {
+            // Phase 1.1: MA 拒绝理由
+            Print("[Filter] H1 Uptrend detected but REJECTED by Daily MA filter");
+            Print("[Filter] Daily trend must be UP with all conditions met");
+            Print("[Filter] Required: MA20>MA50>MA200, Price>MA200, MACD>0");
+         }
          return TREND_NONE; // 日线不是上升趋势，拒绝
       }
       
       if(g_currentTrend != TREND_UP) {
          Print("[Strategy] Uptrend detected - EMA(", TrendMA_Fast, "):", ema_fast,  // 识别到上升趋势
                " > EMA(", TrendMA_Slow, "):", ema_slow, " | ADX:", adx,
-               UseHigherTimeframe ? " | Daily: UP" : "");
+               UseHigherTimeframe ? " | Daily: UP ✓" : "");
       }
       return TREND_UP;
    }
@@ -239,13 +439,30 @@ TrendSignal AnalyzeTrend(string symbol) {
    if(ema_fast < ema_slow && price < ema_filter && strongTrend && minus_di > plus_di) {
       // 如果启用了高周期过滤，必须日线也是下降趋势
       if(UseHigherTimeframe && htfTrend != TREND_DOWN) {
+         if(UseSuperTrend) {
+            // Phase 2.0: SuperTrend 拒绝理由
+            string state_name = "UNKNOWN";
+            if(marketState == MARKET_RANGING) state_name = "RANGING";
+            else if(marketState == MARKET_UNCERTAIN) state_name = "UNCERTAIN";
+            else if(marketState == MARKET_STRONG_UPTREND) state_name = "STRONG UPTREND";
+            else if(marketState == MARKET_WEAK_UPTREND) state_name = "WEAK UPTREND";
+            
+            Print("[Filter] H1 Downtrend detected but REJECTED by Daily SuperTrend filter");
+            Print("[Filter] Daily market state: ", state_name);
+            Print("[Filter] Required: STRONG_DOWNTREND or WEAK_DOWNTREND");
+         } else {
+            // Phase 1.1: MA 拒绝理由
+            Print("[Filter] H1 Downtrend detected but REJECTED by Daily MA filter");
+            Print("[Filter] Daily trend must be DOWN with all conditions met");
+            Print("[Filter] Required: MA20<MA50<MA200, Price<MA200, MACD<0");
+         }
          return TREND_NONE; // 日线不是下降趋势，拒绝
       }
       
       if(g_currentTrend != TREND_DOWN) {
          Print("[Strategy] Downtrend detected - EMA(", TrendMA_Fast, "):", ema_fast,  // 识别到下降趋势
                " < EMA(", TrendMA_Slow, "):", ema_slow, " | ADX:", adx,
-               UseHigherTimeframe ? " | Daily: DOWN" : "");
+               UseHigherTimeframe ? " | Daily: DOWN ✓" : "");
       }
       return TREND_DOWN;
    }
@@ -259,22 +476,72 @@ TrendSignal AnalyzeTrend(string symbol) {
 }
 
 //+------------------------------------------------------------------+
-//| 分析高周期趋势（日线/周线）                                         |
+//| 分析高周期趋势（日线/周线）- Phase 1.1简化版（3层核心过滤）         |
 //+------------------------------------------------------------------+
 TrendSignal AnalyzeHigherTimeframeTrend(string symbol) {
-   // 使用简化的趋势判断（只用均线）
-   double htf_ema_fast = iMA(symbol, HigherTimeframe, 21, 0, MODE_EMA, PRICE_CLOSE, 0);
-   double htf_ema_slow = iMA(symbol, HigherTimeframe, 50, 0, MODE_EMA, PRICE_CLOSE, 0);
+   // === Phase 1.1改进：简化为3层核心过滤（平衡准确性和机会） ===
+   
+   // 1. 计算Daily均线（MA20, MA50, MA200）
+   double htf_ma20 = iMA(symbol, HigherTimeframe, 20, 0, MODE_EMA, PRICE_CLOSE, 0);
+   double htf_ma50 = iMA(symbol, HigherTimeframe, 50, 0, MODE_EMA, PRICE_CLOSE, 0);
+   double htf_ma200 = iMA(symbol, HigherTimeframe, 200, 0, MODE_SMA, PRICE_CLOSE, 0);
    double htf_price = iClose(symbol, HigherTimeframe, 0);
    
-   // 上升趋势：快线>慢线 且 价格>快线
-   if(htf_ema_fast > htf_ema_slow && htf_price > htf_ema_fast) {
+   // 2. 计算Daily MACD（趋势方向确认）
+   double htf_macd_main = iMACD(symbol, HigherTimeframe, 12, 26, 9, PRICE_CLOSE, MODE_MAIN, 0);
+   
+   // === 上升趋势判断（3层核心过滤）===
+   bool uptrend_ma_alignment = (htf_ma20 > htf_ma50 && htf_ma50 > htf_ma200);  // Layer 1: MA排列正确
+   bool uptrend_price_position = (htf_price > htf_ma200);                       // Layer 2: 价格在MA200上方
+   bool uptrend_macd_positive = (htf_macd_main > 0);                            // Layer 3: MACD在零轴上方
+   
+   // 详细日志（用于调试）
+   static datetime last_log_time = 0;
+   datetime current_time = TimeCurrent();
+   bool should_log = (current_time - last_log_time > 3600); // 每小时最多记录一次
+   
+   if(uptrend_ma_alignment && uptrend_price_position && uptrend_macd_positive) {
+      if(should_log) {
+         Print("[Daily Filter] UPTREND CONFIRMED - MA20:", htf_ma20, " > MA50:", htf_ma50, " > MA200:", htf_ma200,  // Daily上升趋势确认
+               " | Price:", htf_price, " > MA200 | MACD:", htf_macd_main, " > 0");
+         last_log_time = current_time;
+      }
       return TREND_UP;
    }
    
-   // 下降趋势：快线<慢线 且 价格<快线
-   if(htf_ema_fast < htf_ema_slow && htf_price < htf_ema_fast) {
+   // === 下降趋势判断（3层核心过滤）===
+   bool downtrend_ma_alignment = (htf_ma20 < htf_ma50 && htf_ma50 < htf_ma200);  // Layer 1: MA排列正确
+   bool downtrend_price_position = (htf_price < htf_ma200);                       // Layer 2: 价格在MA200下方
+   bool downtrend_macd_negative = (htf_macd_main < 0);                            // Layer 3: MACD在零轴下方
+   
+   if(downtrend_ma_alignment && downtrend_price_position && downtrend_macd_negative) {
+      if(should_log) {
+         Print("[Daily Filter] DOWNTREND CONFIRMED - MA20:", htf_ma20, " < MA50:", htf_ma50, " < MA200:", htf_ma200,  // Daily下降趋势确认
+               " | Price:", htf_price, " < MA200 | MACD:", htf_macd_main, " < 0");
+         last_log_time = current_time;
+      }
       return TREND_DOWN;
+   }
+   
+   // === 不满足条件 → 拒绝交易（带详细日志）===
+   if(should_log) {
+      string reason = "[Daily Filter] NO CLEAR TREND - ";  // Daily无明确趋势
+      
+      // 诊断具体原因
+      if(!uptrend_ma_alignment && !downtrend_ma_alignment) {
+         reason += "MA alignment unclear (MA20:" + DoubleToStr(htf_ma20, 5) + 
+                   " MA50:" + DoubleToStr(htf_ma50, 5) + " MA200:" + DoubleToStr(htf_ma200, 5) + ") | ";  // MA排列不清晰
+      }
+      if(!uptrend_price_position && !downtrend_price_position) {
+         reason += "Price near MA200 (Price:" + DoubleToStr(htf_price, 5) + 
+                   " MA200:" + DoubleToStr(htf_ma200, 5) + ") | ";  // 价格接近MA200
+      }
+      if(MathAbs(htf_macd_main) < 0.0001) {
+         reason += "MACD near zero (" + DoubleToStr(htf_macd_main, 6) + ") | ";  // MACD接近零轴
+      }
+      
+      Print(reason);
+      last_log_time = current_time;
    }
    
    return TREND_NONE;
@@ -285,6 +552,17 @@ TrendSignal AnalyzeHigherTimeframeTrend(string symbol) {
 //+------------------------------------------------------------------+
 void CheckEntrySignal(string symbol, TrendSignal trend) {
    if(trend == TREND_NONE || trend == TREND_WEAK) return;
+   
+   // Phase 2.0: NFP冷静期（每月第一个周五15:00-17:00，延长到90分钟）
+   int day_of_week = TimeDayOfWeek(TimeCurrent());
+   int day_of_month = TimeDay(TimeCurrent());
+   int hour = TimeHour(TimeCurrent());
+   
+   if(day_of_week == 5 && day_of_month <= 7 && (hour == 15 || hour == 16)) {
+      Print("[NFP Filter] Cooling period (15:00-17:00) - Skip initial entry",
+            " | Wait for 60-90 min after NFP for volatility to settle");
+      return;
+   }
    
    // 防止同一根K线重复信号
    datetime currentBar = iTime(symbol, PERIOD_CURRENT, 0);
@@ -312,8 +590,8 @@ void ExecuteInitialEntry(string symbol, TrendSignal trend) {
    // 1. 计算ATR用于止损
    double atr = iATR(symbol, PERIOD_CURRENT, 14, 0);
    
-   // 2. 计算初始止损距离
-   double stopLossDistance = atr * TrailStopATRMultiplier;
+   // 2. 计算初始止损距离（使用更宽的倍数以避免被健康回调扫出）
+   double stopLossDistance = atr * InitialStopLossATRMultiplier;
    
    // 3. 计算手数（基于风险百分比）
    double lots = CalculateLotSize(symbol, stopLossDistance, InitialRiskPercent);
@@ -358,7 +636,53 @@ void CheckPyramidSignal(string symbol, TrendSignal trend) {
    // 1. 检查趋势是否一致
    if(trend != g_currentTrend) return;
    
-   // 2. 检查第一单是否盈利
+   // 2. Phase 2.0: NFP冷静期（每月第一个周五15:00-17:00，延长到90分钟）
+   int day_of_week = TimeDayOfWeek(TimeCurrent());
+   int day_of_month = TimeDay(TimeCurrent());
+   int hour = TimeHour(TimeCurrent());
+   int minute = TimeMinute(TimeCurrent());
+   
+   // NFP通常在每月第一个周五 08:30 EDT发布 = 15:30 MT4 (GMT+3)
+   // 冷静期：15:00-17:00（NFP前30分钟 + NFP后60-90分钟）
+   if(day_of_week == 5 && day_of_month <= 7 && (hour == 15 || hour == 16)) {
+      Print("[NFP Filter] Cooling period (15:00-17:00 on first Friday)",
+            " | Skip pyramid to avoid NFP volatility",
+            " | Wait 60-90 min after NFP for volatility to settle");
+      return;
+   }
+   
+   // 3. Phase 2.0: 检测Spike（急速上涨/下跌），避免追高/追低
+   double current_bar_size = MathAbs(iClose(symbol, PERIOD_CURRENT, 0) - iOpen(symbol, PERIOD_CURRENT, 0));
+   double atr = iATR(symbol, PERIOD_CURRENT, 14, 0);
+   double spike_threshold = atr * 2.0;  // K线实体超过2倍ATR认为是spike
+   
+   if(current_bar_size > spike_threshold) {
+      Print("[Spike Detected] Current bar size:", DoubleToStr(current_bar_size / SymbolInfoDouble(symbol, SYMBOL_POINT), 1), 
+            " pips > 2×ATR:", DoubleToStr(spike_threshold / SymbolInfoDouble(symbol, SYMBOL_POINT), 1), 
+            " pips | Skip pyramid add to avoid chasing");
+      return;  // Spike中不加仓，避免追高
+   }
+   
+   // 4. Phase 2.0: 价格距离限制 - 避免追高/追低（等待回调）
+   double currentPrice = (trend == TREND_UP) ? 
+       SymbolInfoDouble(symbol, SYMBOL_ASK) : 
+       SymbolInfoDouble(symbol, SYMBOL_BID);
+   
+   double priceDiff = MathAbs(currentPrice - g_lastAddPrice);
+   double maxAddDistance = atr * 1.5;  // 距离上次加仓超过1.5×ATR，等待回调（从2.0降低到1.5以更严格防止追高）
+   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+   
+   if(priceDiff > maxAddDistance) {
+      Print("[Pullback Required] Price moved too far from last add: ", 
+            DoubleToStr(priceDiff / point, 1), " pips",
+            " > Max distance: ", DoubleToStr(maxAddDistance / point, 1), " pips",
+            " | Last add: ", DoubleToStr(g_lastAddPrice, 5),
+            " | Current: ", DoubleToStr(currentPrice, 5),
+            " | Wait for healthy pullback before adding");
+      return;
+   }
+   
+   // 5. 检查第一单是否盈利
    if(ArraySize(g_positions) == 0) return;
    
    PyramidPosition firstPos = g_positions[0];
@@ -371,25 +695,23 @@ void CheckPyramidSignal(string symbol, TrendSignal trend) {
       return; // 第一单未达到盈利要求
    }
    
-   // 3. 检查价格是否移动足够距离
-   double currentPrice = (trend == TREND_UP) ? SymbolInfoDouble(symbol, SYMBOL_ASK) : 
-                                                SymbolInfoDouble(symbol, SYMBOL_BID);
+   // 6. 检查价格是否移动足够距离（最小距离要求）
+   // 注意：步骤4已经检查了最大距离（避免追高），这里检查最小距离（确保趋势延续）
    double priceMove = MathAbs(currentPrice - g_lastAddPrice);
-   double atr = iATR(symbol, PERIOD_CURRENT, 14, 0);
    double requiredMove = atr * PriceDistanceMultiplier;
    
    if(priceMove < requiredMove) {
       return; // 价格移动不足
    }
    
-   // 4. 检查总风险是否超限
+   // 7. 检查总风险是否超限
    double totalRisk = CalculateTotalRisk(symbol);
    if(totalRisk >= MaxTotalRiskPercent) {
       Print("[Risk Control] Total risk limit reached:", totalRisk, "% >= ", MaxTotalRiskPercent, "%");  // 总风险已达上限
       return;
    }
    
-   // 5. 触发加仓
+   // 8. 触发加仓
    Print("[Signal] Pyramid addition Level ", g_currentLevel, " - Profit pts:", profitPoints,  // 金字塔加仓
          " | Price move:", priceMove, " (Required:", requiredMove, ")");
    
@@ -409,9 +731,9 @@ void ExecutePyramidAdd(string symbol, TrendSignal trend) {
       return;
    }
    
-   // 2. 计算止损（与初始仓位相同逻辑）
+   // 2. 计算止损（使用更宽的初始止损倍数，与初始仓位相同逻辑）
    double atr = iATR(symbol, PERIOD_CURRENT, 14, 0);
-   double stopLossDistance = atr * TrailStopATRMultiplier;
+   double stopLossDistance = atr * InitialStopLossATRMultiplier;
    
    int orderType = (trend == TREND_UP) ? OP_BUY : OP_SELL;
    double price = (trend == TREND_UP) ? SymbolInfoDouble(symbol, SYMBOL_ASK) : 
@@ -469,6 +791,53 @@ void ManageExistingPositions(string symbol, TrendSignal trend) {
 }
 
 //+------------------------------------------------------------------+
+//| 辅助函数：检查Daily趋势是否仍然有效（方案C：多重时间框架确认）       |
+//+------------------------------------------------------------------+
+bool IsDailyTrendStillValid(string symbol, int orderType) {
+   // Phase 2.0: 使用SuperTrend + ADX + DI检查Daily趋势
+   if(UseSuperTrend) {
+      // 使用新的SuperTrend市况识别
+      MarketState state = IdentifyMarketState(symbol);
+      
+      if(orderType == OP_BUY) {
+         // 做多：检查Daily是否仍然上升趋势（强或弱）
+         return (state == MARKET_STRONG_UPTREND || state == MARKET_WEAK_UPTREND);
+         
+      } else if(orderType == OP_SELL) {
+         // 做空：检查Daily是否仍然下降趋势（强或弱）
+         return (state == MARKET_STRONG_DOWNTREND || state == MARKET_WEAK_DOWNTREND);
+      }
+      
+   } else {
+      // 旧方法：使用MA过滤（向后兼容）
+      double daily_ma20 = iMA(symbol, PERIOD_D1, 20, 0, MODE_EMA, PRICE_CLOSE, 0);
+      double daily_ma50 = iMA(symbol, PERIOD_D1, 50, 0, MODE_EMA, PRICE_CLOSE, 0);
+      double daily_ma200 = iMA(symbol, PERIOD_D1, 200, 0, MODE_SMA, PRICE_CLOSE, 0);
+      double daily_macd = iMACD(symbol, PERIOD_D1, 12, 26, 9, PRICE_CLOSE, MODE_MAIN, 0);
+      double daily_price = iClose(symbol, PERIOD_D1, 0);
+      
+      if(orderType == OP_BUY) {
+         // 做多：检查Daily是否仍然上升趋势
+         bool ma_aligned = (daily_ma20 > daily_ma50 && daily_ma50 > daily_ma200);
+         bool price_ok = (daily_price > daily_ma200);
+         bool macd_ok = (daily_macd > 0);
+         
+         return (ma_aligned && price_ok && macd_ok);
+         
+      } else if(orderType == OP_SELL) {
+         // 做空：检查Daily是否仍然下降趋势
+         bool ma_aligned = (daily_ma20 < daily_ma50 && daily_ma50 < daily_ma200);
+         bool price_ok = (daily_price < daily_ma200);
+         bool macd_ok = (daily_macd < 0);
+         
+         return (ma_aligned && price_ok && macd_ok);
+      }
+   }
+   
+   return false;
+}
+
+//+------------------------------------------------------------------+
 //| 更新所有仓位的追踪止损                                             |
 //+------------------------------------------------------------------+
 void UpdateAllStopLosses(string symbol) {
@@ -508,8 +877,31 @@ void UpdateAllStopLosses(string symbol) {
          
          // 只在移动距离足够大时才修改（减少不必要的修改）
          if(newSL > currentSL && (newSL - currentSL) > minStepPoints * point) {
-            if(OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrBlue)) {
-               Print("[SL Update] Ticket:", OrderTicket(), " | New SL:", newSL, " | Trail:", trailDistance);
+            // Phase 2.0优化：总是检查Daily趋势
+            bool dailyTrendValid = IsDailyTrendStillValid(symbol, OP_BUY);
+            double distanceToSL = (currentPrice - currentSL) / point;
+            double trailPips = trailDistance / point;
+            
+            if(dailyTrendValid) {
+               // Daily趋势仍然有效（UPTREND）
+               if(distanceToSL < (3.0 * trailPips)) {
+                  // 价格在3倍ATR内接近止损，可能是H1回调
+                  // 不移动止损，给回调更多空间
+                  Print("[Multi-TF Filter] Ticket:", OrderTicket(), " | Hold SL | Daily UPTREND valid ✓",
+                        " | Dist:", DoubleToStr(distanceToSL, 1), " pips | 3×Trail:", DoubleToStr(3.0*trailPips, 1), " pips");
+               } else {
+                  // 价格远离止损，正常移动
+                  if(OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrBlue)) {
+                     Print("[SL Update] Ticket:", OrderTicket(), " | New SL:", newSL, 
+                           " | Dist:", DoubleToStr(distanceToSL, 1), " pips | Daily: UP ✓");
+                  }
+               }
+            } else {
+               // Daily趋势已转弱/反转，收紧止损保护利润
+               if(OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrBlue)) {
+                  Print("[SL Update] Ticket:", OrderTicket(), " | New SL:", newSL, 
+                        " | Dist:", DoubleToStr(distanceToSL, 1), " pips | Daily: WEAK/REVERSED ✗");
+               }
             }
          }
       } else {
@@ -523,8 +915,31 @@ void UpdateAllStopLosses(string symbol) {
          
          // 只在移动距离足够大时才修改
          if((newSL < currentSL || currentSL == 0) && (currentSL == 0 || (currentSL - newSL) > minStepPoints * point)) {
-            if(OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrRed)) {
-               Print("[SL Update] Ticket:", OrderTicket(), " | New SL:", newSL);
+            // Phase 2.0优化：总是检查Daily趋势
+            bool dailyTrendValid = IsDailyTrendStillValid(symbol, OP_SELL);
+            double distanceToSL = (currentSL - currentPrice) / point;
+            double trailPips = trailDistance / point;
+            
+            if(dailyTrendValid) {
+               // Daily趋势仍然有效（DOWNTREND）
+               if(distanceToSL < (3.0 * trailPips)) {
+                  // 价格在3倍ATR内接近止损，可能是H1回调
+                  // 不移动止损，给回调更多空间
+                  Print("[Multi-TF Filter] Ticket:", OrderTicket(), " | Hold SL | Daily DOWNTREND valid ✓",
+                        " | Dist:", DoubleToStr(distanceToSL, 1), " pips | 3×Trail:", DoubleToStr(3.0*trailPips, 1), " pips");
+               } else {
+                  // 价格远离止损，正常移动
+                  if(OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrRed)) {
+                     Print("[SL Update] Ticket:", OrderTicket(), " | New SL:", newSL, 
+                           " | Dist:", DoubleToStr(distanceToSL, 1), " pips | Daily: DOWN ✓");
+                  }
+               }
+            } else {
+               // Daily趋势已转弱/反转，收紧止损保护利润
+               if(OrderModify(OrderTicket(), OrderOpenPrice(), newSL, OrderTakeProfit(), 0, clrRed)) {
+                  Print("[SL Update] Ticket:", OrderTicket(), " | New SL:", newSL, 
+                        " | Dist:", DoubleToStr(distanceToSL, 1), " pips | Daily: WEAK/REVERSED ✗");
+               }
             }
          }
       }
